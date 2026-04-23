@@ -1,6 +1,6 @@
 # Miner Model
 
-This repository contains the Python code used to run the miner economics forecasting and simulation model described in the paper. The model is run from `main.py`, with key settings and input file paths defined in `config.py`. :contentReference[oaicite:0]{index=0} :contentReference[oaicite:1]{index=1}
+This repository contains the Python code used to run the miner economics forecasting and simulation model described in the paper. The model is run from `main.py`, with key settings and input file paths defined in `config.py`.
 
 ## Requirements
 
