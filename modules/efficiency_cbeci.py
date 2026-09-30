@@ -13,7 +13,7 @@ Inputs
         - "Efficiency (J/Gh)"
         - "Miner_name"
         - "Type"
-        - "Date of release"    (parseable date)
+        - "Date of release"    (DD/MM/YYYY; used where UNIX_date_of_release is blank)
         - "UNIX_date_of_release"
         - "Weight in kg"
 
@@ -158,8 +158,38 @@ def _load_machines(csv_path: str) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing required columns in {csv_path}: {missing}")
 
-    # Parse dates
-    df["Date of release"] = pd.to_datetime(df["Date of release"], errors="coerce")
+    # Parse dates. The UNIX date is used where present because it is unambiguous.
+    # The fallback is day-first because the file is DD/MM/YYYY, and day-first
+    # agrees with the UNIX date on every row that has both.
+    unix_txt = df["UNIX_date_of_release"].astype("string").str.strip()
+    unix_txt = unix_txt.mask(unix_txt == "")
+    unix_num = pd.to_numeric(unix_txt.str.replace(",", "", regex=False),
+                             errors="coerce").astype(float)
+    bad = unix_txt.notna().to_numpy() & ~np.isfinite(unix_num.to_numpy())
+    if bad.any():
+        offenders = list(zip(df.loc[bad, "Miner_name"], unix_txt[bad]))
+        raise ValueError(f"Unparseable UNIX_date_of_release in {csv_path} "
+                         f"(Miner_name, value): {offenders}")
+    unix_dt = pd.to_datetime(unix_num, unit="s")
+
+    dmy_txt = df["Date of release"].astype("string").str.strip()
+    dmy_txt = dmy_txt.mask(dmy_txt == "")
+    dmy_dt = pd.to_datetime(dmy_txt, format="%d/%m/%Y", errors="coerce")
+    bad = (dmy_txt.notna() & dmy_dt.isna()).to_numpy()
+    if bad.any():
+        offenders = list(zip(df.loc[bad, "Miner_name"], dmy_txt[bad]))
+        raise ValueError(f"Date of release not DD/MM/YYYY in {csv_path} "
+                         f"(Miner_name, value): {offenders}")
+
+    both = (unix_dt.notna() & dmy_dt.notna()).to_numpy()
+    disagree = both & ((unix_dt - dmy_dt).abs() > pd.Timedelta(days=1)).to_numpy()
+    if disagree.any():
+        offenders = [(n, d.date(), u) for n, d, u in
+                     zip(df.loc[disagree, "Miner_name"], dmy_dt[disagree], unix_dt[disagree])]
+        raise ValueError(f"Day-first date and UNIX date differ by more than 1 day in "
+                         f"{csv_path} (Miner_name, day-first date, UNIX date): {offenders}")
+
+    df["Date of release"] = unix_dt.fillna(dmy_dt)
     df = df.dropna(subset=["Date of release"])
 
     # Normalize fields
