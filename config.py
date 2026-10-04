@@ -52,13 +52,13 @@ USE_FRACTION = False
 LOWER_BLOCK_MULTIPLIER = 0.5       # Clamping values for block time multipliers
 UPPER_BLOCK_MULTIPLIER = 1.5       # Clamping values for block time multipliers
 DEFAULT_MULTIPLIER = 1.64          # When BTC price is zero
-C_ELEC = 50                        # Electricity cost in $/MWh for modern era
+# Calibration: grid run data/results/grid_2026-10-01 (commit 09730b6); RMSLE 0.7649 (pre-2018 era) and 0.2475 (modern era)
+C_ELEC = 40                        # Electricity cost in $/MWh for modern era
 S = 0.02
 T_STAR = pd.Timestamp("2018-01-01") 
-C_ELEC_0 = 100
-S_0 = 0.07
-# S = 0.07 C = 110 RMSLE best for modern era & **S = 0.02 C = 50 for most recent calibration**
-# S = 0.08 C = 130 RMSLE best for hobby era & **S = 0.07 C = 100 for most recent calibration**
+C_ELEC_0 = 110
+S_0 = 0.09
+# Previous calibration (month-first release dates, unfiltered machine table): S = 0.02, C = 50 modern era; S = 0.07, C = 100 hobby era
 # S = 0.026238, C=50
 # S=0.0280, C=54.0 -> RMSE=2.887e+07 TH/s from grid search for full historical
 # S=0.03, C=60 -> RMSE=2.894e+07 TH/s
@@ -115,7 +115,7 @@ MOVING_AVERAGE = True              # Use a 14-day moving average to smooth out p
 # -------------------------------
 # Efficiency forecasting scenario
 # -------------------------------
-EFFICIENCY_SCENARIO = "frozen"   # options: "frozen", "frontier"
+EFFICIENCY_SCENARIO = "frontier"   # options: "frozen", "frontier"
 
 # -------------------------------
 # Dynamic Hashprice Model Parameters
@@ -145,3 +145,115 @@ MAX_GROWTH = 0.1              # Maximum allowed growth rate (e.g., 10%)
 # Debugging Controls
 # -------------------------------
 LOG_LEVEL = logging.WARNING
+
+# -------------------------------
+# Run overrides from the environment
+# -------------------------------
+# scenarios/run_scenarios.py runs main.py once per scenario and passes each run's
+# settings in PRICE_* environment variables, so neither config.py nor main.py is
+# hand-edited per run. With none of these variables set, every value above (and the
+# hardcoded values in main.py) is used unchanged. A malformed value, or a PRICE_*
+# variable that is not listed here, raises ValueError at import.
+import os as _os
+import re as _re
+
+RUN_OVERRIDE_VARS = (
+    # read below
+    "PRICE_EFFICIENCY_SCENARIO", "PRICE_FORECAST_MODEL",
+    "PRICE_FORECAST_TARGET_DATE", "PRICE_FORECAST_TARGET_PRICE",
+    "PRICE_BLOCK_PACE_DATA", "PRICE_PRICE_DATA",
+    # read in main.py
+    "PRICE_NUM_STEPS", "PRICE_HISTORICAL_CUTOFF", "PRICE_OUTPUT_NAME",
+)
+
+_unknown = sorted(k for k in _os.environ if k.startswith("PRICE_") and k not in RUN_OVERRIDE_VARS)
+if _unknown:
+    raise ValueError(f"unknown PRICE_* environment variable(s) {_unknown}; "
+                     f"the recognised ones are {list(RUN_OVERRIDE_VARS)}")
+
+
+def env_override(name, parse, default):
+    """Return parse(value of environment variable ``name``) if it is set, else ``default``."""
+    if name not in RUN_OVERRIDE_VARS:
+        raise ValueError(f"{name} is not in RUN_OVERRIDE_VARS")
+    raw = _os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return parse(raw.strip())
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"environment variable {name}={raw!r} is invalid: {exc}") from None
+
+
+def parse_choice(*choices):
+    def parse(s):
+        if s not in choices:
+            raise ValueError(f"expected one of {list(choices)}")
+        return s
+    return parse
+
+
+def parse_positive_int(s):
+    value = int(s)  # accepts "1260000" and "1_260_000"; rejects "1e6" and "1.0"
+    if value <= 0:
+        raise ValueError("must be a positive integer")
+    return value
+
+
+def parse_price_or_none(s):
+    """'none' (any case) -> None; otherwise a positive finite number (int if integral text)."""
+    if s.lower() == "none":
+        return None
+    try:
+        value = int(s)
+    except ValueError:
+        value = float(s)
+    if not (value > 0 and value != float("inf")):  # also rejects nan
+        raise ValueError("must be 'none' or a positive finite number")
+    return value
+
+
+def parse_naive_datetime(s):
+    """ISO date or date-time without a UTC offset, e.g. 2032-01-01 or 2025-11-08T17:58:32."""
+    value = datetime.fromisoformat(s)
+    if value.tzinfo is not None:
+        raise ValueError("must not carry a UTC offset (the model uses UTC-naive datetimes)")
+    return value
+
+
+def parse_output_name(s):
+    """Base name of the output CSV, written by main.py to ../data/<name>.csv."""
+    if not _re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}", s) or s.endswith(".csv"):
+        raise ValueError("must be 1-200 characters from [A-Za-z0-9._-], start with a letter "
+                         "or digit, and not end in .csv")
+    return s
+
+
+def parse_data_csv(s):
+    """An input CSV in ../data/: a bare file name, or ../data/<name>.csv.
+    Returns the ../data/<name>.csv form that the defaults above use."""
+    name = s[len("../data/"):] if s.startswith("../data/") else s
+    if not _re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}\.csv", name) or ".." in name:
+        raise ValueError("must be a file name <name>.csv or ../data/<name>.csv, with <name> from "
+                         "[A-Za-z0-9._-] and no other directory")
+    return "../data/" + name
+
+
+EFFICIENCY_SCENARIO = env_override("PRICE_EFFICIENCY_SCENARIO",
+                                   parse_choice("frozen", "frontier"), EFFICIENCY_SCENARIO)
+FORECAST_MODEL = env_override("PRICE_FORECAST_MODEL",
+                              parse_choice("powerlaw", "fixed", "constant", "linear", "logistic"),
+                              FORECAST_MODEL)
+FORECAST_TARGET_DATE = env_override("PRICE_FORECAST_TARGET_DATE", parse_naive_datetime,
+                                    FORECAST_TARGET_DATE)
+FORECAST_TARGET_PRICE = env_override("PRICE_FORECAST_TARGET_PRICE", parse_price_or_none,
+                                     FORECAST_TARGET_PRICE)
+# Input files. TX_BLOCK_DATA and MACHINE_DATA_FILE have no override.
+BLOCK_PACE_DATA = env_override("PRICE_BLOCK_PACE_DATA", parse_data_csv, BLOCK_PACE_DATA)
+PRICE_DATA = env_override("PRICE_PRICE_DATA", parse_data_csv, PRICE_DATA)
+# main.py reads the remaining three variables after its data loading; validate them
+# here too, so a malformed value fails at import rather than minutes into a run.
+for _name, _parse in (("PRICE_NUM_STEPS", parse_positive_int),
+                      ("PRICE_HISTORICAL_CUTOFF", parse_naive_datetime),
+                      ("PRICE_OUTPUT_NAME", parse_output_name)):
+    env_override(_name, _parse, None)

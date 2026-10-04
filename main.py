@@ -8,6 +8,7 @@ the network hashrate and drive difficulty retargeting.
 """
 
 from datetime import datetime, timedelta
+import os
 import time
 import pandas as pd
 import numpy as np
@@ -17,7 +18,8 @@ from config import (
     DEFAULT_TARGET, PARETO_TOP_WEIGHT, PARETO_BOTTOM_WEIGHT, REGRESSION_WEIGHT,
     FORECAST_MODEL, FORECAST_TARGET_DATE, FORECAST_TARGET_PRICE, INITIAL_HASHRATE, 
     INITIAL_DIFFICULTY, BLOCK_PACE_DATA, S, CALIBRATION_MODE, TX_BLOCK_DATA, PRICE_DATA,
-    S_0, C_ELEC_0
+    S_0, C_ELEC_0,
+    env_override, parse_positive_int, parse_naive_datetime, parse_output_name
 )
 from modules.simulation import run_simulation
 from modules.visualization import (
@@ -74,6 +76,8 @@ initial_state = {
 num_steps = 921_683 # October 31, 2025
 # num_steps = 1_260_000 # ~ 2032
 # num_steps = 877_280 # January 1, 2025
+# PRICE_NUM_STEPS in the environment overrides the value above (see config.py).
+num_steps = env_override("PRICE_NUM_STEPS", parse_positive_int, num_steps)
 
 initial_block_height = initial_state['block_height']
 
@@ -122,6 +126,9 @@ params = {
     'daily_window_start_idx': 0,
     'daily_window_day': None,
 }
+# PRICE_HISTORICAL_CUTOFF in the environment overrides the cutoff above (see config.py).
+params['historical_cutoff'] = env_override("PRICE_HISTORICAL_CUTOFF", parse_naive_datetime,
+                                           params['historical_cutoff'])
 
 # file_name = "simulation_results_efficiency_frozen_price_fixed" DONE
 # file_name = "simulation_results_efficiency_frozen_price_200k" DONE
@@ -134,6 +141,11 @@ params = {
 # file_name = "simulation_results_testing" DONE
 # file_name = "simulation_results_calibration" DONE
 file_name = "simulation_results_hindcasting"
+# PRICE_OUTPUT_NAME in the environment overrides file_name (see config.py).
+file_name = env_override("PRICE_OUTPUT_NAME", parse_output_name, file_name)
+if any(v in os.environ for v in ("PRICE_NUM_STEPS", "PRICE_HISTORICAL_CUTOFF", "PRICE_OUTPUT_NAME")):
+    print(f"[run overrides] num_steps={num_steps} "
+          f"historical_cutoff={params['historical_cutoff'].isoformat(sep=' ')} file_name={file_name}")
 # Run the simulation with exception handling.
 print("Simulation started. Detailed logs available at: data/logs/model_debug.log")
 try:

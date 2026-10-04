@@ -16,6 +16,8 @@ Inputs
         - "Date of release"    (DD/MM/YYYY; used where UNIX_date_of_release is blank)
         - "UNIX_date_of_release"
         - "Weight in kg"
+    Hardware released on or after July 2014 is kept only for Bitmain, MicroBT and
+    Canaan (CBECI v1.2.0+); earlier hardware is kept regardless of manufacturer.
 
 Core ideas from the PDF
 -----------------------
@@ -45,6 +47,7 @@ and returns efficiency in J / hash.
 from __future__ import annotations
 
 import math
+import warnings
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -64,6 +67,11 @@ from config import EFFICIENCY_SCENARIO, T_STAR, ELEC_FRACTION, USE_FRACTION
 
 # Two-month deployment lag per PDF (can be overridden via config import if desired)
 DEPLOYMENT_LAG_MONTHS = 2
+
+# CBECI v1.2.0+: only Bitmain, MicroBT and Canaan hardware released on or after
+# July 2014 is considered. Earlier hardware (CPU/GPU/FPGA/early ASIC) is kept.
+CBECI_MANUFACTURERS = ("Bitmain", "MicroBT", "Canaan")
+CBECI_MANUFACTURER_FILTER_FROM = pd.Timestamp("2014-07-01")
 
 # Age-weight buckets (months, weight)
 # Implements the piecewise function shown in the PDF's image [cite: 41-54]
@@ -191,6 +199,11 @@ def _load_machines(csv_path: str) -> pd.DataFrame:
 
     df["Date of release"] = unix_dt.fillna(dmy_dt)
     df = df.dropna(subset=["Date of release"])
+
+    # CBECI v1.2.0+ manufacturer filter (maker = first token of Miner_name).
+    maker = df["Miner_name"].astype("string").str.strip().str.split().str[0]
+    drop = (df["Date of release"] >= CBECI_MANUFACTURER_FILTER_FROM) & ~maker.isin(CBECI_MANUFACTURERS)
+    df = df.loc[~drop.to_numpy()]
 
     # Normalize fields
     df = df.rename(columns={
@@ -361,6 +374,11 @@ def _powerlaw_eff_model(
     return float(eta_floor) + float(A) * np.power(z, -float(p))
 
 
+def _log_powerlaw_eff_model(t_years, eta_floor, A, p, t_shift):
+    """log of _powerlaw_eff_model; the fit target is log(eta) (see _fit_exponential_model)."""
+    return np.log(_powerlaw_eff_model(t_years, eta_floor, A, p, t_shift))
+
+
 def _fit_exponential_model(df: pd.DataFrame):
     """
     Fit a *power-law* frontier efficiency curve η_TH(t) (J/TH) across historical
@@ -371,6 +389,11 @@ def _fit_exponential_model(df: pd.DataFrame):
     Key change vs naive fit:
       - Fit ONLY to the observed frontier (lower envelope) of machine efficiencies.
       - Up-weight recent frontier points so the fit matches modern efficiencies.
+      - Fit in LOG space: the residual is log(model) - log(frontier), so every
+        frontier point counts in relative terms. The frontier spans about seven
+        orders of magnitude (14,313,725 J/TH for a 2009 CPU to 9.5 J/TH in 2026);
+        a least-squares fit in J/TH lets the 2009-2011 points supply almost all of
+        the error and leaves the modern end of the curve far too high.
 
         η_frontier(t) = η_floor + A * (t_years + t_shift)^(-p)
     """
@@ -432,23 +455,8 @@ def _fit_exponential_model(df: pd.DataFrame):
     sigma = 1.0 / np.sqrt(w)                                 # inverse-sqrt weighting
 
     # ---- Initial guesses (from frontier only) ----
-    eta_floor0 = max(0.0, float(np.min(y_frontier)) * 0.98)
-
-    # Shift: small positive to avoid singularity; allow optimizer to change it
-    t_shift0 = 0.25  # years
-
-    y_adj = np.clip(y_frontier - eta_floor0, 1e-9, np.inf)
-    x_log = np.log(np.clip(X + t_shift0, 1e-12, np.inf))
-    y_log = np.log(y_adj)
-
-    try:
-        slope, intercept = np.polyfit(x_log, y_log, 1)  # y_log ≈ log(A) - p*x_log
-        p0 = max(0.10, float(-slope))
-        A0 = max(1e-12, float(np.exp(intercept)))
-    except Exception:
-        p0 = 2.0
-        A0 = float(y_adj[0]) * float(np.power(max(X[0] + t_shift0, 1e-12), p0))
-
+    # floor 1 J/TH, A at the first frontier value, p = 2, t_shift = 0.25 years.
+    eta_floor0, A0, p0, t_shift0 = 1.0, float(y_frontier[0]), 2.0, 0.25
     p0_vec = [eta_floor0, A0, p0, t_shift0]
 
     # ---- Bounds (allow steeper decay than before) ----
@@ -461,14 +469,14 @@ def _fit_exponential_model(df: pd.DataFrame):
 
     try:
         params, _ = curve_fit(
-            _powerlaw_eff_model,
+            _log_powerlaw_eff_model,
             X,
-            y_frontier,
+            np.log(y_frontier),
             p0=p0_vec,
             bounds=bounds,
             sigma=sigma,
             absolute_sigma=False,
-            maxfev=60000,
+            maxfev=200000,
         )
         eta_floor, A, p, t_shift = params
 
@@ -478,9 +486,23 @@ def _fit_exponential_model(df: pd.DataFrame):
         p = max(float(p), 1e-6)
         t_shift = max(float(t_shift), 1e-6)
 
-    except Exception:
-        # Fallback: keep initial guesses (still decreasing by construction)
-        eta_floor, A, p, t_shift = float(eta_floor0), float(A0), float(p0), float(t_shift0)
+        if not np.all(np.isfinite(params)):
+            raise ValueError(f"non-finite fitted parameters {params.tolist()}")
+
+    except Exception as exc:
+        # No fallback to the initial guess: it is not a fitted curve (it gives
+        # ~47,000 J/TH in 2026). Leave the model unavailable instead, so that a
+        # frontier-scenario run fails loudly (see compute_dynamic_efficiency).
+        warnings.warn(
+            f"Frontier efficiency fit failed ({type(exc).__name__}: {exc}); "
+            "the frontier model is unavailable.",
+            RuntimeWarning,
+        )
+        _model_fitted = False
+        _model_params = None
+        _model_t0 = None
+        _model_forecast_cache = {}
+        return
 
     _model_params = (float(eta_floor), float(A), float(p), float(t_shift))
     _model_t0 = pd.to_datetime(t0)
@@ -553,6 +575,23 @@ class _Env:
 
 _env = _Env(csv_path="", hist_cutoff=pd.Timestamp("1970-01-01 00:00:00"))
 
+def reset_run_state():
+    """
+    Reset the per-run state: the 14-day revenue and threshold moving averages, the
+    last-day marker and the last non-empty profitable-set mask.
+
+    run_simulation calls this once before its loop, so that a second run in the same
+    process (for example in a calibration loop) starts from empty state rather than
+    from the previous run's last day. The machine table, `_env` and the fitted
+    frontier model and its cache are not touched; they depend only on the input file.
+    """
+    global _last_rev_day, _prev_nonempty_set_mask
+    _last_rev_day = None
+    _daily_revenue_ma.clear()
+    _daily_threshold_ma.clear()
+    _prev_nonempty_set_mask = None
+
+
 def _ensure_initialized(file_path: str):
     """Lazily load machine table & fit frontier model once."""
     global _machine_df, _env
@@ -603,8 +642,11 @@ def compute_dynamic_efficiency(
     global _last_rev_day, _daily_revenue_ma, _daily_threshold_ma
     day = pd.to_datetime(target_date).date()
 
-    # Only update the daily revenue value if it's a new day
-    if _last_rev_day != day:
+    # Only update the daily revenue value once per calendar day. Block timestamps
+    # are not monotonic, so a block can be stamped with an earlier day than the
+    # previous call; `!=` would append a second entry for that day. Appending only
+    # on a later day keeps one moving-average entry per calendar day.
+    if _last_rev_day is None or day > _last_rev_day:
         
         # 1. Calculate H_d (daily average hashrate) in H/s
         H_array = calc_core_hashrate(daily_difficulties, daily_block_times, window=None)
@@ -748,10 +790,12 @@ def compute_dynamic_efficiency(
             # Give the frontier machine weight 1.0 so it acts like a young,
             # heavily-used rig; you can tune this if you want.
             w_vec = np.append(w_vec, [1.0])
-        except RuntimeError:
-            # If the frontier model isn't available for some reason,
-            # just fall back to frozen-tech behavior.
-            pass
+        except RuntimeError as exc:
+            # The frontier scenario was requested; running on without the model
+            # would silently produce frozen-technology results.
+            raise RuntimeError(
+                "frontier scenario requested but frontier fit unavailable"
+            ) from exc
 
     # ---- 8) Weighted average efficiency ψ_d ---------------------------------
     valid = w_vec > 0

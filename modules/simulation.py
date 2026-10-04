@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import logging
 from modules import network, economics, energy, debug
-from modules.efficiency_cbeci import compute_dynamic_efficiency
+from modules.efficiency_cbeci import compute_dynamic_efficiency, reset_run_state
 from modules.price import get_price_for_date, forecast_price
 from modules.economics import apply_hashrate_shock
 from config import EXPECTED_BLOCK_TIME, S as S_CONFIG, CALIBRATION_MODE, TX_FEE_PCT
@@ -92,15 +92,24 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                         break
                     start_idx += 1
                 
-                # Find end_idx
-                end_idx = start_idx
-                while end_idx < n_hist:
-                    if history[end_idx]['sim_timestamp'].date() != day_to_aggregate:
-                        break
-                    end_idx += 1
+                # Block timestamps are not monotonic: a block stamped day X+1 can be
+                # followed by a block stamped day X. Scan the whole remainder
+                # history[start_idx:n_hist] and keep every entry stamped
+                # day_to_aggregate, rather than stopping at the first entry from
+                # another day. The next window starts at the first entry stamped
+                # after day_to_aggregate. Aggregation still runs only once
+                # current_day > aggregated_day, so it uses blocks already produced
+                # (causal); a block stamped day X that arrives after day X was
+                # aggregated is not added to that aggregate.
+                same_day_history = []
+                end_idx = n_hist
+                for i in range(start_idx, n_hist):
+                    h_date = history[i]['sim_timestamp'].date()
+                    if h_date == day_to_aggregate:
+                        same_day_history.append(history[i])
+                    elif h_date > day_to_aggregate and end_idx == n_hist:
+                        end_idx = i
                 
-                same_day_history = history[start_idx:end_idx]
-
                 if not same_day_history:
                     daily_difficulties = np.array([state['D']])
                     daily_block_times = np.array([state.get('T_block', EXPECTED_BLOCK_TIME)])
@@ -252,6 +261,10 @@ def run_simulation(initial_state: dict, params: dict, num_steps: int, initial_bl
     state.setdefault('last_retarget_ts', state['sim_timestamp'])
     history = [copy.copy(state)]
     block_height = initial_block_height
+
+    # Per-run efficiency state (moving averages, last day, profitable-set mask) is
+    # module-level; clear it so a second run in this process starts fresh.
+    reset_run_state()
 
     for step in range(num_steps):
         block_height += 1
