@@ -324,6 +324,15 @@ The summary files in `validation/results/revenue_check/`, `validation/results/al
 and `validation/results/machine_list_check/` contain values derived from that data
 (annual energy and errors computed with Coin Metrics revenue and hashrate). Those values
 are attributed to Coin Metrics.
+The API documentation also links to Coin Metrics' terms of service. Anyone who downloads
+the data again with these scripts is bound by those terms.
+
+The files in `validation/results/` also contain data derived from the Cambridge Bitcoin
+Electricity Consumption Index (CBECI): CBECI's annual estimates, values computed from
+CBECI's hardware list, and the comparison of the two machine lists. CBECI's methodology
+page (https://ccaf.io/cbnsi/cbeci/methodology) states that the work is licensed under the
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International licence
+(CC BY-NC-SA 4.0). See the License section for the licence of these files.
 
 ## Calibration grids (Figure 3)
 
@@ -481,3 +490,13 @@ This software is licensed under the PolyForm Noncommercial License 1.0.0 (see
 including personal use, research, education, and use by charitable, educational,
 public research and government organisations. Commercial use is not licensed under
 these terms. To ask about a commercial license, contact the author.
+
+The data files in `validation/results/` are licensed separately, under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International licence
+(CC BY-NC-SA 4.0, https://creativecommons.org/licenses/by-nc-sa/4.0/), because they are
+adapted from CBECI data published under that licence. They contain material from the
+Cambridge Bitcoin Electricity Consumption Index, Cambridge Centre for Alternative Finance
+(https://ccaf.io/cbnsi/cbeci), and from Coin Metrics community data (CC BY-NC 4.0,
+https://docs.coinmetrics.io/api/v4/). The values in these files were computed by the
+author from that material and are not published by either source. The PolyForm
+Noncommercial License covers the code only.
