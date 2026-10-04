@@ -1,0 +1,10 @@
+# Versions used for the paper's runs (conda environment, Python 3.11.15, Linux).
+# Install with: pip install -r REQUIREMENTS.txt
+# The scenario and calibration drivers import fcntl and resource, which exist only
+# on Unix-like systems.
+numpy==2.4.4
+pandas==2.3.3
+scipy==1.17.1
+matplotlib==3.10.8
+scikit-learn==1.8.0
+plotly==6.6.0
