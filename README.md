@@ -370,3 +370,11 @@ these:
   `C_ELEC_0 = 110`, `S = 0.02`, `C_ELEC = 40`. `EFFICIENCY_SCENARIO` is `"frontier"`.
 - `config.py` and `main.py` read the `PRICE_*` environment overrides.
 - The validation, calibration and scenario scripts and `REQUIREMENTS.txt` were added.
+
+## License
+
+This software is licensed under the PolyForm Noncommercial License 1.0.0 (see
+`LICENSE.md`). It may be used, changed and shared for any noncommercial purpose,
+including personal use, research, education, and use by charitable, educational,
+public research and government organisations. Commercial use is not licensed under
+these terms. To ask about a commercial license, contact the author.
