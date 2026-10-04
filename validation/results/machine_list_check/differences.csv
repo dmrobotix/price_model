@@ -1,0 +1,16 @@
+status,name_ours,name_cbeci,ours_row,cbeci_xlsx_row,release_ours,release_cbeci,eff_J_per_TH_ours,eff_J_per_TH_cbeci,hashrate_ours,hashrate_cbeci,power_ours,power_cbeci,weight_ours,weight_cbeci,type_ours,type_cbeci,cbeci_version,release_date_diff_days,eff_rel_diff,eff_ours_eq_cbeci_rounded_4dp,hashrate_rel_diff,power_rel_diff,release_year,in_model_set,fleet_window_first_year,fleet_window_last_year,flag_eff_gt_1pct,flag_date_gt_15d
+only_cbeci,,MicroBT Whatsminer M66S++,,163,,2024-12-01,,15.5,,356,,5518,,,,,1.6.5,,,False,,,2024,True,2025,2030,False,False
+only_cbeci,,MicroBT Whatsminer M63S++,,164,,2024-12-01,,15.51724138,,464,,7200,,,,,1.6.5,,,False,,,2024,True,2025,2030,False,False
+only_cbeci,,MicroBT Whatsminer M60S++,,165,,2024-12-01,,15.92920354,,226,,3600,,,,,1.6.5,,,False,,,2024,True,2025,2030,False,False
+only_cbeci,,MicroBT Whatsminer M70,,171,,2025-12-01,,14.5,,214,,3103,,,,,1.7.0,,,False,,,2025,True,2026,2031,False,False
+only_cbeci,,MicroBT Whatsminer M72,,172,,2025-12-01,,14.5,,246,,3567,,,,,1.7.0,,,False,,,2025,True,2026,2031,False,False
+only_cbeci,,MicroBT Whatsminer M70S,,173,,2025-12-01,,13.5,,226,,3051,,,,,1.7.0,,,False,,,2025,True,2026,2031,False,False
+only_cbeci,,MicroBT Whatsminer M72S,,174,,2025-12-01,,13.5,,264,,3564,,,,,1.7.0,,,False,,,2025,True,2026,2031,False,False
+only_cbeci,,Canaan Avalon A16,,178,,2026-03-01,,13.82978723,,282,,3900,,,,,1.7.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,Bitmain Antminer S21j XP Hyd,,179,,2026-03-01,,12,,495,,5940,,,,,1.8.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,MicroBT WhatsMiner M6DS+,,180,,2026-03-01,,17.03703704,,540,,9200,,,,,1.8.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,MicroBT WhatsMiner M6DS++,,181,,2026-03-01,,15.54054054,,592,,9200,,,,,1.8.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,MicroBT WhatsMiner M7D,,182,,2026-03-01,,14.51104101,,634,,9200,,,,,1.8.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,MicroBT WhatsMiner M7DS,,183,,2026-03-01,,13.52941176,,680,,9200,,,,,1.8.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,Canaan Avalon A16XP,,184,,2026-04-01,,12.83333333,,300,,3850,,,,,1.7.0,,,False,,,2026,True,2026,2031,False,False
+only_cbeci,,Bitmain Antminer S23e Hyd 2U,,185,,2026-04-01,,10,,865,,8650,,,,,1.8.0,,,False,,,2026,True,2026,2031,False,False

@@ -1,0 +1,235 @@
+CBECI revenue check
+======================================================================
+Data availability (Coin Metrics community API, daily, btc, 2010-07-01 to 2023-12-31):
+  IssTotUSD  available=True  4915 rows
+  FeeTotUSD  available=False  Requested metric 'FeeTotUSD' with frequency '1d' for asset 'btc' is not available with supplied credentials.
+  RevUSD     available=False  Requested metric 'RevUSD' with frequency '1d' for asset 'btc' is not available with supplied credentials.
+  HashRate   available=True  4932 rows
+  PriceUSD   available=True  4915 rows
+  IssTotNtv  available=True  4932 rows
+  FeeTotNtv  available=True  4932 rows
+  BlkCnt     available=True  4932 rows
+  FeeTotUSD is rebuilt as FeeTotNtv x PriceUSD (IssTotUSD = IssTotNtv x PriceUSD is checked
+  below). Coin Metrics daily rows are UTC days labelled by their start date; PriceUSD is
+  the CM reference rate at the end of that UTC day; BTC HashRate is
+  (BlkCnt/144) x DiffMean x (2^32/1e12)/600 TH/s, i.e. the day's work / 86,400 s.
+
+Section 0. Reconstruction checks
+  [check] instrumented run daily psi identical to cbeci_replication_v3: True  max |diff| = 0 J/TH
+  [check] recorded revenue_per_TH vs formula, max rel diff: 0.0  
+  [check] recorded theta vs revenue_per_TH / P_per_J, max rel diff: 0.0  
+  [check] revenue_day missing only on the first append, strictly increasing after: True  
+  [check] Coin Metrics IssTotUSD vs IssTotNtv x PriceUSD, max rel diff: 2.195283371764223e-05  supports rebuilding FeeTotUSD as FeeTotNtv x PriceUSD
+  [check] revenue days with Coin Metrics revenue and hashrate: 4914  of 5471 model revenue days; first = 2010-07-18
+  [check] 2011-2023 calendar days with no model revenue entry: 1  [datetime.date(2023, 12, 31)]
+  [check] 2011-2023 model revenue days without Coin Metrics data: 0  
+
+Section 1. Daily revenue inputs, ours / Coin Metrics - 1 (2011-2023 days)
+  median relative difference over all days:
+    n_blocks       +0.0000 %   (mean  -0.0073 %, 5th/95th pct +0.000 / +0.000 %)
+    subsidy_btc    +0.0000 %   (mean  -0.0331 %, 5th/95th pct +0.000 / +0.000 %)
+    fees_btc       +0.0000 %   (mean  +0.1350 %, 5th/95th pct -3.410 / +3.488 %)
+    price          +0.1252 %   (mean  +0.5500 %, 5th/95th pct -0.686 / +3.013 %)
+    subsidy_usd    +0.1218 %   (mean  +0.5167 %, 5th/95th pct -0.707 / +3.012 %)
+    fees_usd       +0.3900 %   (mean  +0.6856 %, 5th/95th pct -3.382 / +5.156 %)
+    revenue_usd    +0.1293 %   (mean  +0.5165 %, 5th/95th pct -0.739 / +3.007 %)
+    hashrate       -0.0208 %   (mean  -0.0166 %, 5th/95th pct -1.579 / +1.539 %)
+    R_per_TH       +0.2447 %   (mean  +0.5436 %, 5th/95th pct -1.636 / +3.499 %)
+
+  per-year mean relative difference (%), ours vs Coin Metrics:
+        mean_price  mean_subsidy_usd  mean_fees_usd  mean_revenue_usd  mean_hashrate  mean_R_per_TH  median_R_per_TH  sd_ln_ratio_R
+year                                                                                                                               
+2011.0      +0.030            +0.018         +0.903            +0.018         -0.035         +0.065           +0.030         +1.905
+2012.0      +0.069            -0.057         +0.537            -0.057         -0.038         -0.006           +0.066         +2.850
+2013.0      +3.368            +3.326         +3.414            +3.326         -0.109         +3.451           +1.697         +4.565
+2014.0      +0.037            +0.017         +0.188            +0.017         -0.055         +0.081           +0.077         +1.096
+2015.0      +0.025            +0.023         +0.053            +0.023         +0.001         +0.030           -0.002         +1.013
+2016.0      +0.360            +0.254         +0.360            +0.255         -0.001         +0.266           +0.290         +2.859
+2017.0      +0.701            +0.701         +0.651            +0.694         -0.007         +0.711           +0.574         +1.698
+2018.0      +1.235            +1.235         +1.329            +1.237         -0.001         +1.247           +1.103         +1.555
+2019.0      +0.969            +0.969         +1.011            +0.969         +0.002         +0.973           +0.871         +1.458
+2020.0      +0.261            +0.138         +0.259            +0.142         +0.002         +0.149           +0.120         +3.245
+2021.0      +0.043            +0.043         +0.102            +0.043         +0.015         +0.045           +0.069         +1.444
+2022.0      +0.015            +0.015         +0.070            +0.015         +0.009         +0.013           -0.053         +0.929
+2023.0      +0.038            +0.038         +0.038            +0.035         +0.002         +0.043           +0.068         +1.089
+
+  per-year mean of log-ratio components (%, ln R ratio = btc + price - hashrate):
+        mean_ln_ratio_R_pct  mean_ln_ratio_btc_pct  mean_ln_ratio_price_pct  mean_ln_ratio_hashrate_pct
+year                                                                                                   
+2011.0               +0.047                 -0.012                   +0.018                      -0.042
+2012.0               -0.042                 -0.153                   +0.067                      -0.044
+2013.0               +3.285                 -0.041                   +3.213                      -0.114
+2014.0               +0.075                 -0.020                   +0.035                      -0.059
+2015.0               +0.025                 -0.002                   +0.024                      -0.003
+2016.0               +0.230                 -0.134                   +0.357                      -0.006
+2017.0               +0.694                 -0.007                   +0.690                      -0.011
+2018.0               +1.227                 +0.001                   +1.220                      -0.006
+2019.0               +0.958                 -0.000                   +0.957                      -0.002
+2020.0               +0.103                 -0.155                   +0.256                      -0.002
+2021.0               +0.034                 -0.000                   +0.041                      +0.007
+2022.0               +0.009                 -0.000                   +0.015                      +0.006
+2023.0               +0.037                 -0.003                   +0.037                      -0.003
+
+  15 largest |ln(R_ours/R_cm)| days (all 30 in largest_deviation_days.csv):
+            n_blocks_ours  n_blocks_cm  reldiff_price  reldiff_revenue_usd  reldiff_hashrate  reldiff_R_per_TH
+date_utc                                                                                                      
+2020-05-11            157    +157.0000        +0.0028              -0.4273           +0.0025           -0.4287
+2016-07-09            149    +149.0000        -0.0066              -0.3898           -0.0031           -0.3879
+2012-11-28            172    +172.0000        +0.0009              -0.3828           +0.0024           -0.3843
+2013-04-11            160    +160.0000        +0.3876              +0.3880           -0.0191           +0.4149
+2013-06-28            169    +169.0000        +0.2850              +0.2849           +0.0031           +0.2810
+2013-07-01            157    +157.0000        +0.2689              +0.2691           -0.0042           +0.2746
+2011-09-11            125    +125.0000        -0.1636              -0.1636           +0.0020           -0.1652
+2013-11-19            161    +161.0000        +0.1781              +0.1787           -0.0133           +0.1946
+2013-10-02            191    +191.0000        +0.1854              +0.1856           +0.0025           +0.1825
+2013-08-20            190    +190.0000        +0.1762              +0.1762           -0.0032           +0.1800
+2013-08-18            194    +194.0000        +0.1461              +0.1461           -0.0139           +0.1623
+2013-07-27            181    +181.0000        +0.0632              +0.0633           -0.0776           +0.1528
+2013-10-09            179    +178.0000        +0.0771              +0.0829           -0.0600           +0.1521
+2013-07-12            154    +154.0000        +0.1729              +0.1728           +0.0236           +0.1458
+2013-09-29            170    +170.0000        +0.1282              +0.1283           -0.0058           +0.1349
+
+Section 2. Fleet efficiency psi
+  [check] appends inferred from block dates == recorded appends: True  
+  [check] per-block 14-day theta rebuilt == recorded (exact): True  max abs diff 0 J/TH
+  [check] per-block replay with our revenue: blocks identical to the model: 823785 of 823785  max rel diff 0; 6 s
+  [check] per-block replay daily psi vs v3, max rel diff (2011-2023): 0.0  
+  [check] daily offline psi vs v3 (2011-2023): days with |rel diff| > 1e-9: 344 of 4748  median |rel| 0, max |rel| 0.09664 on 2013-11-30
+
+Section 3. Annual energy, H = Coin Metrics HashRate, PUE 1.10, $50/MWh
+  percent difference from CBECI by year:
+      v3_published_H1day  model_v3  replay_ours  replay_cm  daily_ours  daily_cm
+year                                                                            
+2011              -0.136    -0.084       -0.084     -0.192      -0.094    -0.202
+2012              -1.673    -1.663       -1.663     -1.459      -1.665    -1.461
+2013              +8.851    +8.911       +8.911     +3.439      +8.860    +3.372
+2014              +1.107    +1.138       +1.138     +1.138      +1.132    +1.132
+2015              -2.501    -2.491       -2.491     -2.491      -2.492    -2.492
+2016              -3.009    -3.000       -3.000     -2.922      -3.002    -2.924
+2017              +1.566    +1.583       +1.583     +1.390      +1.584    +1.390
+2018              +2.763    +2.773       +2.773     +2.382      +2.771    +2.380
+2019              +2.416    +2.424       +2.424     +2.237      +2.423    +2.236
+2020              +1.029    +1.033       +1.033     +0.832      +1.033    +0.832
+2021              +0.986    +0.989       +0.989     +0.989      +0.988    +0.988
+2022              +0.861    +0.865       +0.865     +0.866      +0.864    +0.865
+2023              +0.587    +0.593       +0.593     +0.589      +0.593    +0.589
+
+  effect of each swap on annual energy (% change vs our revenue, block replay):
+         cm  cm_hashrate_only  cm_price_only  cm_btc_only  daily_approx_effect
+year                                                                          
+2011 -0.108            -0.108         +0.000       +0.000               -0.010
+2012 +0.208            +0.000         +0.000       +0.208               -0.002
+2013 -5.025            -0.111         -2.556       +0.000               -0.047
+2014 +0.000            +0.000         +0.000       +0.000               -0.006
+2015 +0.000            +0.000         +0.000       +0.000               -0.001
+2016 +0.080            +0.000         +0.000       +0.080               -0.002
+2017 -0.191            +0.049         -0.191       +0.049               +0.000
+2018 -0.381            -0.036         -0.381       +0.000               -0.002
+2019 -0.183            -0.003         -0.194       +0.012               -0.001
+2020 -0.199            +0.001         -0.263       +0.059               -0.000
+2021 +0.000            +0.012         +0.000       +0.000               -0.000
+2022 +0.001            -0.012         -0.002       +0.000               -0.001
+2023 -0.004            -0.001         -0.014       +0.000               -0.000
+
+  WAPE / MAPE (%):
+                         MAPE_pct                                WAPE_pct                              
+window                  2011-2023 2015-2023 2018-2023 2020-2023 2011-2023 2015-2023 2018-2023 2020-2023
+series                                                                                                 
+v3_published_H1day          2.114     1.746     1.440     0.866     1.249     1.234     1.194     0.832
+model_v3                    2.119     1.750     1.446     0.870     1.255     1.239     1.199     0.837
+replay_ours                 2.119     1.750     1.446     0.870     1.255     1.239     1.199     0.837
+replay_cm                   1.610     1.633     1.316     0.819     1.155     1.150     1.112     0.799
+replay_cm_hashrate_only     2.119     1.751     1.439     0.870     1.252     1.237     1.195     0.836
+replay_cm_price_only        1.823     1.632     1.301     0.800     1.148     1.138     1.098     0.784
+replay_cm_btc_only          2.107     1.755     1.458     0.885     1.264     1.249     1.209     0.847
+daily_ours                  2.115     1.750     1.445     0.870     1.254     1.239     1.198     0.836
+daily_cm                    1.605     1.633     1.315     0.818     1.154     1.150     1.111     0.799
+
+Section 4. Days on which psi differs (CM revenue vs ours, block replay), 2013:
+            psi_ours_J_per_TH  psi_cm_J_per_TH  H_cm_THs       dTWh  dTWh_pct_of_CBECI_year
+2013-04-08          1.313e+06        4.978e+05     59.12  -0.001272                   -0.12
+2013-04-09          1.318e+06        1.314e+06     67.13 -8.262e-06              -0.0007794
+2013-04-20          1.318e+06        5.031e+05      68.7  -0.001478                 -0.1395
+2013-04-21          5.025e+05        4.978e+05     78.52 -9.663e-06              -0.0009116
+2013-06-26          4.978e+05        1.632e+05     167.3  -0.001478                 -0.1394
+2013-06-27          4.978e+05        1.612e+05     160.5  -0.001427                 -0.1346
+2013-06-28          1.632e+05        1.612e+05     162.5 -8.543e-06              -0.0008059
+2013-09-20          1.666e+05        3.786e+04      1120  -0.003806                 -0.3591
+2013-09-21          1.666e+05        3.722e+04      1058  -0.003615                  -0.341
+2013-09-22          1.666e+05        3.722e+04      1137  -0.003883                 -0.3663
+2013-09-23          1.666e+05        3.722e+04      1176  -0.004017                 -0.3789
+2013-09-24          1.666e+05        3.722e+04      1187  -0.004055                 -0.3825
+2013-09-25          1.666e+05        3.722e+04      1297  -0.004432                 -0.4181
+2013-09-26          3.801e+04        3.722e+04      1198 -2.527e-05               -0.002384
+2013-12-13          1.741e+05        3.748e+04      7857   -0.02833                  -2.673
+2013-12-14          3.739e+04        3.669e+04      8941 -0.0001647                -0.01554
+  sum of the changed days' contribution by year (% of CBECI annual TWh):
+2011   -0.108
+2012   +0.204
+2013   -5.472
+2016   +0.077
+2017   -0.194
+2018   -0.391
+2019   -0.187
+2020   -0.201
+2022   +0.001
+2023   -0.004
+  2013 price, ours / Coin Metrics - 1, by month (%):
+          mean  median   min    max
+date_utc                           
+1        +0.16   +0.17 -0.72  +0.71
+2        +0.06   +0.07 -1.78  +1.33
+3        -0.25   +0.05 -6.47  +0.92
+4        +1.94   +0.35 -5.66 +38.76
+5        +1.67   +1.61 -1.63  +4.73
+6        +3.49   +1.70 -0.72 +28.50
+7        +6.24   +5.83 -0.09 +26.89
+8        +8.64   +7.93 -0.10 +17.62
+9        +8.37   +8.13 +2.55 +12.82
+10       +6.31   +7.38 +0.01 +18.54
+11       +2.57   +1.64 -0.62 +17.81
+12       +0.99   +1.03 -1.69  +4.38
+  CBECI rounding half-width (0.005 TWh) as % of each year:
+year
+2011   3.57
+2012   5.00
+2013   0.47
+2014   0.11
+2015   0.14
+2016   0.09
+2017   0.04
+2018   0.01
+2019   0.01
+2020   0.01
+2021   0.01
+2022   0.01
+2023   0.00
+
+  mean daily psi ratio, CM revenue / our revenue (block replay), by year (%):
+2011   -0.253
+2012   +0.436
+2013   -2.217
+2014   +0.000
+2015   +0.000
+2016   +0.086
+2017   -0.222
+2018   -0.429
+2019   -0.228
+2020   -0.163
+2021   +0.000
+2022   -0.002
+2023   -0.008
+  days per year on which psi changes at all:
+2011     2
+2012     2
+2013    16
+2014     0
+2015     0
+2016     2
+2017     8
+2018    30
+2019    59
+2020    61
+2021     0
+2022    10
+2023    28

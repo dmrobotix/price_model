@@ -45,7 +45,7 @@ by `EFFICIENCY_SCENARIO` in `config.py`:
 | `main.py` | Runs one simulation and writes its result CSV. |
 | `config.py` | Model constants, calibrated parameters, input file paths, and the `PRICE_*` environment overrides. |
 | `modules/` | The model: `simulation.py` (block loop), `network.py` (difficulty and hashrate), `economics.py` (revenue to block time), `efficiency_cbeci.py` (CBECI fleet efficiency and the frontier fit), `energy.py`, `energy_cbeci.py`, `price.py` (historical prices and forecasts), `data_processing.py` (input loaders and error metrics), `visualization.py`, `debug.py`. |
-| `validation/` | The CBECI replication (`cbeci_replication.py`), its figure (`plot_cbeci_replication.py`, Figure 2), and the outputs of the run reported in the paper (`results/`). |
+| `validation/` | The CBECI replication (`cbeci_replication.py`), its figure (`plot_cbeci_replication.py`, Figure 2), three follow-up checks of the remaining differences from CBECI (`cbeci_revenue_check.py`, `cbeci_alignment_check.py`, `cbeci_machine_list_check.py`), and the outputs of the runs reported in the paper (`results/`). |
 | `calibration/` | The driver of the two calibration grids (`run_grid.py`, `run_grid_point.py`) and their figure (`plot_grid_figure3.py`, Figure 3). See `calibration/README.md`. |
 | `notebooks/` | The two calibration grid scripts that `calibration/run_grid_point.py` imports. |
 | `scenarios/` | The run definitions (`runs.json`), the scenario driver (`run_scenarios.py`, `run_one.py`), the reproduction check (`prepare_april_reproduction.py`, `verify_reproduction.py`) and the statistics and Figures 4 to 9 (`analyze_results.py`). See `scenarios/README.md`. |
@@ -103,6 +103,12 @@ that name at the repository root.
 | CBECI replication (`validation/cbeci_replication.py`) | the same four files as `main.py` (the `config.py` defaults) |
 | Calibration grids (`calibration/run_grid.py`) | `combined_block_data_latest.csv`, `market_price_min.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv`. The price file is named in the two grid scripts in `notebooks/`. The other three come from `config.py`. |
 | The ten scenario runs and the reproduction run (`scenarios/runs.json`) | `combined_block_data.csv`, `market_price_min.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv` |
+| Revenue check, `run-model` stage (`validation/cbeci_revenue_check.py`) | It calls `cbeci_replication.main()`, so it reads the `config.py` defaults of the replication, with no `PRICE_*` variables set: `BLOCK_PACE_DATA` = `combined_block_data_latest.csv`, `PRICE_DATA` = `market_price_min_latest.csv`, `TX_BLOCK_DATA` = `txfee_data.csv`, `MACHINE_DATA_FILE` = `cbeci_machines_090325.csv`. |
+| Revenue check, `download` stage | No file. It requests the Coin Metrics community API. |
+| Revenue check, `analyze` stage | `cbeci_machines_090325.csv`. From `results/cbeci_revenue_check/`: `model_daily_revenue_appends.csv`, `model_per_block.csv.gz`, `coinmetrics_daily.csv`, `coinmetrics_availability.csv` and `model_run/daily_efficiency_J_per_TH.csv`, which are written by the two earlier stages. From `results/cbeci_replication_v3/`: `daily_efficiency_J_per_TH.csv` and `annual_comparison.csv`, which are the output of `validation/cbeci_replication.py` (see "Checks of the remaining differences from CBECI"). It also reads `USE_FRACTION` from `config.py`. |
+| Alignment check (`validation/cbeci_alignment_check.py`) | `cbeci_machines_090325.csv`. From `results/cbeci_revenue_check/`: `model_daily_revenue_appends.csv`, `daily_revenue_comparison.csv`, `coinmetrics_daily.csv` and `daily_psi_by_revenue_source.csv`. `coinmetrics_daily.csv` is written by the `download` stage. `daily_revenue_comparison.csv` and `daily_psi_by_revenue_source.csv` are written by the `analyze` stage. |
+| Machine-list check, `fetch` stage (`validation/cbeci_machine_list_check.py`) | No file. It requests `http://sha256.cbeci.org`, the Google Sheet to which that address redirects, and the Internet Archive's CDX index. |
+| Machine-list check, `analyze` stage | `cbeci_machines_090325.csv`. From `results/cbeci_machine_list_check/raw/`: `fetch_log.json`, `sheet.xlsx` and the `sheet_gid*.csv` export, which the `fetch` stage writes. From `results/cbeci_revenue_check/`: `model_daily_revenue_appends.csv`, `model_per_block.csv.gz`, `coinmetrics_daily.csv`, `daily_psi_by_revenue_source.csv` and `annual_energy_by_revenue_source.csv`. It also reads `USE_FRACTION` from `config.py`. The Internet Archive index files that `fetch` saves are not read. |
 
 The scenario runs override the block and price files of `config.py` with the two older
 files, which are the files the paper's original runs used. `scenarios/README.md`
@@ -110,11 +116,17 @@ files, which are the files the paper's original runs used. `scenarios/README.md`
 they share in `Block_Time_Seconds` and `Bits`. The two price files are identical over
 the minutes they share.
 
+The older files `combined_block_data.csv` and `market_price_min.csv` and the `_latest`
+files configured in `config.py` agree in every column the model reads over all heights
+and minutes they share. The columns are `Height`, `Block_Time_Seconds` and `Bits` for the
+blocks, and `Price (USD)` for the prices. The CBECI validation runs through 2023, so it
+gives the same result with either pair of files.
+
 ### Size, coverage and origin of each file
 
 | File | Bytes | Last row | Origin |
 |---|---|---|---|
-| `cbeci_machines_090325.csv` | 11,170 | 166 machines | The machine table published on the CBECI website (Cambridge Centre for Alternative Finance, https://ccaf.io/cbnsi/cbeci), as stated in the paper's Data Sources section. The download date is not recorded in this repository. |
+| `cbeci_machines_090325.csv` | 11,170 | 166 machines | The machine table published on the CBECI website (Cambridge Centre for Alternative Finance, https://ccaf.io/cbnsi/cbeci), as stated in the paper's Data Sources section. It was downloaded from CBECI's website on 9 March 2025. The `090325` in the file name is that date, written as day, month and year. |
 | `txfee_data.csv` | 87,084,626 | block 922,755, 2025-11-08 17:58:32 UTC | Per-block fee statistics (`Height`, `timestamp` in milliseconds, `total_fees` and others). The paper states that block-level data, including transaction fees, were collected with Bitcoin Core through custom Python scripts. The script that wrote this file is not in this repository. The last fee timestamp sets the start of the forecast. |
 | `combined_block_data.csv` | 176,547,088 | block 925,641, 2025-11-29 00:32:16 | Per-block height, hash, timestamp, inter-block interval, `Bits` and target. Collected with Bitcoin Core (RPC) and the mempool.space REST API by scripts that are not in this repository. |
 | `combined_block_data_latest.csv` | 180,410,516 | block 936,248, 2026-02-12 17:19:49 | The same source and columns, extended to a later block, with two extra columns. |
@@ -227,6 +239,92 @@ Its default `--in-dir` (`data/results/cbeci_replication_v3`) is the name of the
 authors' run, so pass `--in-dir`. See "Paths that refer to the authors' files" below for
 `--size-in`.
 
+### Checks of the remaining differences from CBECI
+
+After the replication, three scripts in `validation/` test whether particular inputs
+explain the differences that remain between the model and CBECI's published annual
+estimates. None of them changes the model. Each stage refuses to overwrite its own
+outputs, and each script writes to `data/results/`. Run the commands from the
+repository root with `data/` in place.
+
+`validation/cbeci_revenue_check.py` replaces the model's daily revenue and hashrate
+with the daily values from Coin Metrics, as CBECI's methodology does, and recomputes
+the annual electricity use. It has three stages, to be run in this order:
+
+    PYTHONDONTWRITEBYTECODE=1 MPLBACKEND=Agg python validation/cbeci_revenue_check.py run-model
+    python validation/cbeci_revenue_check.py download
+    python validation/cbeci_revenue_check.py analyze
+
+The `run-model` stage repeats the replication with instrumentation that records each
+daily moving-average update and takes about 40 to 50 minutes. The `download` stage
+requests daily Bitcoin metrics from Coin Metrics' community API
+(`community-api.coinmetrics.io`, no account or key). The community tier does not offer
+the daily fee and revenue totals in US dollars, so the script rebuilds the fee total
+from the fee in bitcoin and the reference price. The `analyze` stage compares the
+revenue series, checks that its offline reconstruction reproduces the model run, and
+writes the annual energy and errors under each revenue source. Outputs go to
+`data/results/cbeci_revenue_check/`.
+
+The `analyze` stage also needs the output of an ordinary run of
+`validation/cbeci_replication.py` in `data/results/cbeci_replication_v3/`. The path is
+fixed at `validation/cbeci_revenue_check.py:66` and the script has no command-line
+option to change it. The stage reads `daily_efficiency_J_per_TH.csv` and
+`annual_comparison.csv` from that folder. It checks that the daily efficiency of its own
+instrumented run is identical to the one in `daily_efficiency_J_per_TH.csv`, and it
+records the result as a check in `summary.txt` without stopping if the two differ.
+It takes the `TWh_H_1day` column of `annual_comparison.csv` as the series
+`TWh_v3_published_H1day` (line 612), which is the model's annual energy computed with
+the one-day hashrate derived from the block data. That hashrate applies CBECI's definition
+of the daily hashrate to this repository's block data. It does not use a series published
+by CBECI or by Coin Metrics. The replication always computes both its hashrate variants
+(`H_2016` and `H_1day`) and writes both to `annual_comparison.csv`, so no option selects
+the one-day hashrate. The folder is produced by this command, run with `data/` in place
+and no `PRICE_*` variables set, so that it uses the same `config.py` defaults as the
+`run-model` stage:
+
+    MPLBACKEND=Agg python validation/cbeci_replication.py --out-dir data/results/cbeci_replication_v3
+
+The `--out-dir` argument is the only argument of the script. Run this command before the
+`analyze` stage. It takes about 40 to 50 minutes, the same as the `run-model` stage.
+
+`validation/cbeci_alignment_check.py` tests whether shifting the 14-day window of the
+profitability threshold by one day earlier or one day later than the model's window
+changes the result. It reads the outputs of the revenue check, so run that script's three stages first:
+
+    python validation/cbeci_alignment_check.py
+
+It has no stages and writes to `data/results/cbeci_revenue_check/alignment/`.
+
+`validation/cbeci_machine_list_check.py` compares the machine table in this repository
+with CBECI's public hardware list and replays the daily fleet efficiency with each
+machine table. It also reads the outputs of the revenue check. Its two stages are:
+
+    PYTHONDONTWRITEBYTECODE=1 MPLBACKEND=Agg python validation/cbeci_machine_list_check.py fetch
+    PYTHONDONTWRITEBYTECODE=1 MPLBACKEND=Agg python validation/cbeci_machine_list_check.py analyze
+
+The `fetch` stage requests `http://sha256.cbeci.org`, which redirects to a public Google
+Sheet, downloads the sheet, and queries the Internet Archive's index for archived
+copies. The sheet changes over time, so a later run can differ from the run reported
+here. The `fetch` stage saves each raw response with its retrieval time and hash. Outputs go to
+`data/results/cbeci_machine_list_check/`.
+
+The summary outputs of the runs reported in the paper are in `validation/results/`,
+in three subfolders. `revenue_check/` holds `summary.txt`, the errors and annual energy
+under each revenue source, and the yearly revenue comparison. `alignment/` holds the
+errors and annual energy under each window alignment. `machine_list_check/` holds
+`summary.txt`, the matching table between the two machine lists, the list of differences,
+and the errors and annual energy under each machine table. The daily series, the raw
+downloads and the per-block model output are not published. The scripts download or
+compute them again. The Coin Metrics data and the CBECI sheet can change between
+downloads, so a new run can give different values from the ones reported here.
+
+The Coin Metrics community data are available under the Creative Commons Attribution-NonCommercial
+4.0 International licence (CC BY-NC 4.0), as stated at https://docs.coinmetrics.io/api/v4/.
+The summary files in `validation/results/revenue_check/`, `validation/results/alignment/`
+and `validation/results/machine_list_check/` contain values derived from that data
+(annual energy and errors computed with Coin Metrics revenue and hashrate). Those values
+are attributed to Coin Metrics.
+
 ## Calibration grids (Figure 3)
 
 The parameters `S_0`, `C_ELEC_0`, `S` and `C_ELEC` in `config.py` are the minima of two
@@ -332,6 +430,11 @@ repository:
   scripts' own functions. They are, in inches: Figure 2 6.9250 by 3.5243; Figure 3
   16.0000 by 5.2756; Figures 4 to 9 14.5 wide by 7.9542, 6.9388, 5.0587, 5.0689,
   5.0587 and 5.0660.
+- `validation/cbeci_revenue_check.py` reads the output of the replication from
+  `data/results/cbeci_replication_v3/`. This is a fixed path in the script
+  (`V3_DIR`, line 66). No option sets it, so the script must be edited to read
+  another folder. The `analyze` stage needs that folder to exist. The
+  command that creates it is given in "Checks of the remaining differences from CBECI".
 - `validation/plot_cbeci_replication.py` defaults to `--in-dir
   data/results/cbeci_replication_v3`, and `calibration/plot_grid_figure3.py` defaults
   to `data/results/grid_2026-10-01/`. Both are names of the authors' runs.

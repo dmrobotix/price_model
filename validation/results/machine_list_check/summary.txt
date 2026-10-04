@@ -1,0 +1,164 @@
+CBECI machine-list check
+======================================================================
+Section 0. Source of CBECI's list
+  http://sha256.cbeci.org answers with an HTTP redirect to a Google Sheet:
+    https://docs.google.com/spreadsheets/d/15bkGk6cpIGK9DKcytnErB0VZfihPkF1TsAYd4_Nac_Y/edit#gid=718996821
+    sha256.cbeci.org_response.html     status=302 bytes=    125 fetched 2026-10-04T17:41:44+00:00 sha256 f5f7affd8f7b8700... 
+    redirect_target.html               status=200 bytes= 377428 fetched 2026-10-04T17:41:44+00:00 sha256 67ceac6527b801e4... 
+    sheet.xlsx                         status=200 bytes=  55385 fetched 2026-10-04T17:41:45+00:00 sha256 6e4b27bed93a3d99... 
+    sheet_gid718996821.csv             status=200 bytes=  14247 fetched 2026-10-04T17:41:46+00:00 sha256 c5005536a8825278... 
+    wayback_cdx_sheet.txt              status=200 bytes=   8382 fetched 2026-10-04T17:41:55+00:00 sha256 182f7eca7e07ae1f... 
+    wayback_cdx_cbeci.txt              status=200 bytes=   1620 fetched 2026-10-04T17:41:57+00:00 sha256 d1b3bad9f0224d03... 
+  Sheet title: 'CBECI SHA-256 Mining Equipment List'; 'Last updated:  6 March 2024'
+  Tab 'list' header: ['Miner_name', 'Type', 'Date of release', 'UNIX_date_of_release', 'Hashing power (Th/s)', 'Power (W)', 'Efficiency (J/Gh)', 'Weight in kg', 'Efficiency:\nsuggested alternative(s)', 'Included in  version', 'Additional comments']
+  Rows parsed: 181 machines (CBECI); 166 machines (ours).
+  Fields CBECI provides per machine: name, type (CPU/GPU/FPGA/ASIC for the Taylor (2016)
+  rows, blank afterwards), release date (always the 1st of a month except one row), UNIX
+  release date (formula of the date; blank on later rows), hashing power (TH/s), power (W),
+  efficiency (J/Gh; a formula = power / hashing power / 1000), weight (kg), a column
+  'Efficiency: suggested alternative(s)', the version in which the machine was included,
+  and a free-text comment. There is no manufacturer column (the maker is the first word
+  of the name) and no separate 'adjusted' efficiency.
+  Rows with a value in 'Efficiency: suggested alternative(s)': 0
+  Versions present (machines per version):
+    1.0.0: 62, 1.0.1: 17, 1.0.2: 5, 1.0.3: 4, 1.0.5: 6, 1.1.1: 8, 1.2.0: 10, 1.3.1: 13, 1.4.0: 9, 1.5.0: 8, 1.6.0: 5, 1.6.1: 9, 1.6.2: 4, 1.6.3: 2, 1.6.4: 4, 1.6.5: 3, 1.7.0: 6, 1.8.0: 6
+  Comments present on 8 rows; distinct texts:
+    - Based on Taylor (2016). For the lack of available hashrate performance data on other CPU models, we use this model despite it only being released in January 2010.
+    - Based on Taylor (2016).
+  [check] CBECI cached efficiency == power / hashrate / 1000, max rel diff: 4.389816288252746e-10  
+  [check] CBECI UNIX date == release date where present: 104 of 104  
+  [check] CBECI release dates not on the 1st of a month: 1  Canaan Avalon 1266 2022-04-02
+  [check] CSV export (displayed values) has the same rows and names as the xlsx: True  181 CSV rows vs 181 xlsx rows
+  [check] our release-date parse == _load_machines (rows kept by the loader): True  128 rows kept of 166
+
+Section 1. Name matching
+  Rule: tier 1 = identical name after removing surrounding whitespace; tier 2 = identical
+  normalised name (lower case; 'Hyd.'/'Hyd' -> 'hydro'; 'Imm.' -> 'immersion'; hashrate
+  tags '(14Th)', '16Th/s', '52T' -> '14th', '16th', '52th'; parentheses removed; leading
+  manufacturer word and the words Antminer/Whatsminer/AvalonMiner dropped). One-to-one only.
+  matched: 166 (exact 166); only ours: 0; only CBECI: 15; ambiguous keys: 0
+
+  Matched machines, field comparison:
+    release date identical: 166 of 166; |diff| > 15 days: 0
+    efficiency |rel diff| > 1 %: 0; max |rel diff| 1.548e-03 (Canaan Avalon A1466)
+    our efficiency == CBECI's rounded to 4 decimals of J/Gh: 164 of 166
+    hashrate identical: 144; power identical: 163 of 166
+    released in 2013: 2 matched, max |eff rel diff| 3.361e-06, max |date diff| 0.0 d
+    released in 2015/2016: 3 matched, max |eff rel diff| 1.865e-04, max |date diff| 0.0 d
+    released in 2018/2019: 67 matched, max |eff rel diff| 1.048e-03, max |date diff| 0.0 d
+  Largest efficiency differences among matched machines (top 10):
+                       name_ours  release_year  eff_J_per_TH_ours  eff_J_per_TH_cbeci  eff_rel_diff  in_model_set
+             Canaan Avalon A1466          2023               21.5             21.5333   -0.00154799          True
+Bitmain Antminer S19 Pro (110Th)          2020               29.5             29.5455   -0.00153846          True
+            Canaan Avalon A1566I          2024               18.1             18.0723    0.00153333          True
+       MicroBT Whatsminer M30S++          2020               30.4             30.3571    0.00141176          True
+                  Bitmain S21 XP          2024               13.5             13.5185   -0.00136986          True
+        MicroBT Whatsminer M60S+          2024                 17             16.9811    0.00111111          True
+                  StrongU STU-U8          2019               45.7             45.6522    0.00104762         False
+         MicroBT WhatsMiner M56S          2023               26.2             26.1792   0.000792793          True
+              Innosilicon T3 43T          2019               48.8             48.8372  -0.000761905         False
+             Canaan Avalon A1446          2023               24.5             24.5185  -0.000755287          True
+
+  Machines only in CBECI's list:
+                  name_cbeci release_cbeci  eff_J_per_TH_cbeci cbeci_version  in_model_set  fleet_window_first_year
+   MicroBT Whatsminer M66S++    2024-12-01                15.5         1.6.5          True                     2025
+   MicroBT Whatsminer M63S++    2024-12-01               15.52         1.6.5          True                     2025
+   MicroBT Whatsminer M60S++    2024-12-01               15.93         1.6.5          True                     2025
+      MicroBT Whatsminer M70    2025-12-01                14.5         1.7.0          True                     2026
+      MicroBT Whatsminer M72    2025-12-01                14.5         1.7.0          True                     2026
+     MicroBT Whatsminer M70S    2025-12-01                13.5         1.7.0          True                     2026
+     MicroBT Whatsminer M72S    2025-12-01                13.5         1.7.0          True                     2026
+           Canaan Avalon A16    2026-03-01               13.83         1.7.0          True                     2026
+Bitmain Antminer S21j XP Hyd    2026-03-01                  12         1.8.0          True                     2026
+    MicroBT WhatsMiner M6DS+    2026-03-01               17.04         1.8.0          True                     2026
+   MicroBT WhatsMiner M6DS++    2026-03-01               15.54         1.8.0          True                     2026
+      MicroBT WhatsMiner M7D    2026-03-01               14.51         1.8.0          True                     2026
+     MicroBT WhatsMiner M7DS    2026-03-01               13.53         1.8.0          True                     2026
+         Canaan Avalon A16XP    2026-04-01               12.83         1.7.0          True                     2026
+Bitmain Antminer S23e Hyd 2U    2026-04-01                  10         1.8.0          True                     2026
+  Machines only in ours:
+    none
+  Earliest release among machines only in CBECI's list: 2024-12-01
+
+Section 2. Machine tables replayed (after _load_machines: date handling + manufacturer filter)
+  ours              128 machines kept  (data/cbeci_machines_090325.csv)
+  ours_cbeci_eff    128 machines kept  (data/results/cbeci_machine_list_check/machine_tables/ours_with_cbeci_efficiency.csv)
+  cbeci_list        143 machines kept  (data/results/cbeci_machine_list_check/machine_tables/cbeci_list.csv)
+  cbeci_list_v1_1    64 machines kept  (data/results/cbeci_machine_list_check/machine_tables/cbeci_list_v1_1_and_earlier.csv)
+  [check] ours_cbeci_eff differs from ours only in efficiency (names, order, deployment equal): True  
+  model set, ours vs cbeci_list: 128 shared names, 15 only in cbeci_list, 0 only in ours
+    cbeci_list-only machines in the model set deploy from 2025-02-01 to 2026-06-01
+  cbeci_list_v1_1 drops 79 rows added in version 1.2.0 or later; their release dates run 2018-12-01 to 2026-04-01;
+    those released before 2020-10: Bitmain Antminer S15 28T (2018-12-01, v1.3.1), Bitmain Antminer T15 23T (2018-12-01, v1.3.1)
+  [check] appends inferred from block dates == recorded appends: True  
+  [check] block replay, our revenue + our table == model run, blocks identical: 823785 of 823785  
+  [check] block_ours daily psi vs revenue check replay_cm (CSV at 10 sig. fig.), max rel diff: 4.2201186989387907e-10  
+  [check] daily_ours daily psi vs revenue check daily_cm (CSV at 10 sig. fig.), max rel diff: 4.171736289748651e-10  
+  [check] annual TWh block_ours vs revenue check TWh_replay_cm (CSV at 6 dp), max abs diff: 4.80388749224403e-07  
+  [check] annual TWh daily_ours vs revenue check TWh_daily_cm (CSV at 6 dp), max abs diff: 4.757670666322156e-07  
+
+Section 3. Annual energy, H = Coin Metrics HashRate, Coin Metrics revenue, PUE 1.10, $50/MWh
+  'block_*' = per-block replay (the revenue check's replay_cm path);
+  'daily_*' = one fleet evaluation per calendar day (the revenue check's daily_cm path).
+  percent difference from CBECI by year:
+      block_ours  daily_ours  block_ours_cbeci_eff  daily_ours_cbeci_eff  block_cbeci_list  daily_cbeci_list  block_cbeci_list_v1_1  daily_cbeci_list_v1_1
+year                                                                                                                                                      
+2011      -0.192      -0.202                -0.192                -0.202            -0.192            -0.202                 -0.192                 -0.202
+2012      -1.459      -1.461                -1.459                -1.461            -1.459            -1.461                 -1.459                 -1.461
+2013      +3.439      +3.372                +3.439                +3.372            +3.439            +3.372                 +3.439                 +3.372
+2014      +1.138      +1.132                +1.138                +1.132            +1.138            +1.132                 +1.138                 +1.132
+2015      -2.491      -2.492                -2.491                -2.492            -2.491            -2.492                 -2.491                 -2.492
+2016      -2.922      -2.924                -2.923                -2.925            -2.923            -2.925                 -2.923                 -2.925
+2017      +1.390      +1.390                +1.393                +1.394            +1.393            +1.394                 +1.393                 +1.394
+2018      +2.382      +2.380                +2.381                +2.379            +2.381            +2.379                 +2.381                 +2.379
+2019      +2.237      +2.236                +2.240                +2.239            +2.240            +2.239                 +4.698                 +4.698
+2020      +0.832      +0.832                +0.833                +0.832            +0.833            +0.832                 +0.804                 +0.804
+2021      +0.989      +0.988                +0.992                +0.992            +0.992            +0.992                 +6.651                 +6.651
+2022      +0.866      +0.865                +0.875                +0.874            +0.875            +0.874                +12.376                +12.375
+2023      +0.589      +0.589                +0.581                +0.581            +0.581            +0.581                +30.852                +30.853
+
+  effect of each table on annual energy (% change vs ours, per-block replay):
+      ours_cbeci_eff  cbeci_list  cbeci_list_v1_1
+year                                             
+2011         -0.0000     -0.0000          -0.0000
+2012         +0.0000     +0.0000          +0.0000
+2013         -0.0000     -0.0000          -0.0000
+2014         -0.0002     -0.0002          -0.0002
+2015         +0.0002     +0.0002          +0.0002
+2016         -0.0002     -0.0002          -0.0002
+2017         +0.0034     +0.0034          +0.0034
+2018         -0.0010     -0.0010          -0.0010
+2019         +0.0031     +0.0031          +2.4077
+2020         +0.0005     +0.0005          -0.0279
+2021         +0.0031     +0.0031          +5.6073
+2022         +0.0096     +0.0096         +11.4110
+2023         -0.0076     -0.0076         +30.0861
+
+  WAPE / MAPE (%):
+                       MAPE_pct                                WAPE_pct                              
+window                2011-2023 2015-2023 2018-2023 2020-2023 2011-2023 2015-2023 2018-2023 2020-2023
+series                                                                                               
+block_ours                1.610     1.633     1.316     0.819     1.155     1.150     1.112     0.799
+daily_ours                1.605     1.633     1.315     0.818     1.154     1.150     1.111     0.799
+block_ours_cbeci_eff      1.610     1.634     1.317     0.820     1.156     1.151     1.113     0.800
+daily_ours_cbeci_eff      1.606     1.634     1.316     0.820     1.155     1.151     1.112     0.800
+block_cbeci_list          1.610     1.634     1.317     0.820     1.156     1.151     1.113     0.800
+daily_cbeci_list          1.606     1.634     1.316     0.820     1.155     1.151     1.112     0.800
+block_cbeci_list_v1_1     5.446     7.174     9.627    12.671    11.979    12.107    12.587    14.928
+daily_cbeci_list_v1_1     5.441     7.174     9.626    12.671    11.978    12.106    12.586    14.928
+
+  days per year on which daily psi differs from ours (per-block replay, |rel| > 1e-12):
+      ours_cbeci_eff  ours_cbeci_eff_max_abs_rel  cbeci_list  cbeci_list_max_abs_rel  cbeci_list_v1_1  cbeci_list_v1_1_max_abs_rel
+2011             292                    4.16e-09         292                4.16e-09              292                     4.16e-09
+2012             366                    2.28e-08         366                2.28e-08              366                     2.28e-08
+2013             365                    4.13e-07         365                4.13e-07              365                     4.13e-07
+2014             361                    3.48e-06         361                3.48e-06              361                     3.48e-06
+2015             365                    1.67e-05         365                1.67e-05              365                     1.67e-05
+2016             366                    3.60e-05         366                3.60e-05              366                     3.60e-05
+2017             365                    5.77e-05         365                5.77e-05              365                     5.77e-05
+2018             365                    4.72e-05         365                4.72e-05              365                     4.72e-05
+2019             365                    7.76e-05         365                7.76e-05              365                     4.15e-02
+2020             366                    1.74e-02         366                1.74e-02              366                     3.10e-02
+2021             365                    4.72e-05         365                4.72e-05              365                     9.40e-02
+2022             365                    2.25e-02         365                2.25e-02              365                     1.62e-01
+2023             365                    9.68e-03         365                9.68e-03              365                     4.39e-01
