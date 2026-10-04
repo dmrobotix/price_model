@@ -1,1 +1,13 @@
+# Input data and run outputs. The data directory is not published; see README.md.
+# "data/" matches a directory; "/data" also matches a symbolic link named data at
+# the repository root.
 data/
+/data
+
+# Python bytecode and Jupyter checkpoints
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Outputs written into notebooks/ when the grid scripts are run directly
+notebooks/sensitivity_grid_results_*.csv
