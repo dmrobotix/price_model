@@ -37,6 +37,7 @@ from modules.data_processing import (load_block_paces, get_max_block_height, cal
 from modules.network import calc_core_hashrate
 from modules.energy import calc_power_demand, calc_energy_consumption
 from modules.economics import build_shock_profile
+from modules.boundaries import GENESIS_TIME_S, check_boundary_blocks
 from modules.energy import calc_power_demand, calc_energy_consumption
 
 # Set up logging.
@@ -46,11 +47,16 @@ setup_logging()
 market_prices = load_market_prices(PRICE_DATA)
 real_paces = load_block_paces(BLOCK_PACE_DATA, TX_BLOCK_DATA)
 max_hist_block = get_max_block_height(BLOCK_PACE_DATA)
+# Period boundaries are UTC instants; their block heights come from the UTC block
+# times (modules/boundaries.py). This checks them, and the genesis time, against the data.
+boundary_blocks = check_boundary_blocks(real_paces)
+print(f"Boundary blocks (last block of the earlier period): {boundary_blocks}")
 
 # Define Initial State
-# NOTE: We initialize 'sim_timestamp_s' explicitly using the first block time from history if possible
-# or a hardcoded genesis time.
-genesis_time_s = 1230988505 # 2009-01-03 13:15:05 UTC
+# NOTE: 'sim_timestamp_s' starts at the genesis block's UTC time, 1231006505
+# (2009-01-03 18:15:05 UTC). Until 2026-10-05 it was 1230988505, the Eastern clock
+# reading 13:15:05 taken as UTC.
+genesis_time_s = GENESIS_TIME_S
 start_dt = pd.to_datetime(genesis_time_s, unit='s', utc=True).tz_convert(None)
 
 initial_state = {
@@ -73,9 +79,9 @@ initial_state = {
 }
 # Set the number of simulation steps.
 # num_steps = 888_300
-num_steps = 921_683 # October 31, 2025
+num_steps = 921_683 # boundary block of 2025-11-01 00:00 UTC (stamped 00:00:27 UTC); the testing run ends here
 # num_steps = 1_260_000 # ~ 2032
-# num_steps = 877_280 # January 1, 2025
+# num_steps = 877_259 # boundary block of 2025-01-01 UTC (877,280 was the Eastern-midnight block)
 # PRICE_NUM_STEPS in the environment overrides the value above (see config.py).
 num_steps = env_override("PRICE_NUM_STEPS", parse_positive_int, num_steps)
 
@@ -103,6 +109,9 @@ params = {
     'market_prices': market_prices,                # Historical BTC-USD price data.
     'block_paces': real_paces,
     #'historical_cutoff': datetime(2010, 7, 17, 0, 0, 0), # start of minute price data
+    # Cutoff, a UTC instant. With 2025-01-01: block 877,259 (00:21:15 UTC, the boundary
+    # block) is the last historical block; 877,260 is the first block whose time the
+    # economic model sets (modules/boundaries.py).
     'historical_cutoff': datetime(2025, 1, 1, 0, 0, 0), 
     #'historical_cutoff': datetime(2025, 11, 8, 17, 58, 32), # last transaction fee data
     #'historical_cutoff': datetime(2025, 12, 31, 23, 59, 59),
@@ -138,9 +147,12 @@ params['historical_cutoff'] = env_override("PRICE_HISTORICAL_CUTOFF", parse_naiv
 # file_name = "simulation_results_efficiency_frontier_price_500k" DONE
 # file_name = "simulation_results_efficiency_frontier_price_1M" DONE
 # file_name = "simulation_results_efficiency_frozen_price_1M" DONE
-# file_name = "simulation_results_testing" DONE
+# file_name = "simulation_results_hindcasting" DONE (num_steps 877_259, cutoff 2010-07-17)
 # file_name = "simulation_results_calibration" DONE
-file_name = "simulation_results_hindcasting"
+# The default settings above (num_steps 921,683, cutoff 2025-01-01) are the out-of-sample
+# test, the `testing` run of scenarios/runs.json, so the default output is named after it.
+# Until 2026-10-06 it was named simulation_results_hindcasting.
+file_name = "simulation_results_testing"
 # PRICE_OUTPUT_NAME in the environment overrides file_name (see config.py).
 file_name = env_override("PRICE_OUTPUT_NAME", parse_output_name, file_name)
 if any(v in os.environ for v in ("PRICE_NUM_STEPS", "PRICE_HISTORICAL_CUTOFF", "PRICE_OUTPUT_NAME")):
@@ -388,5 +400,5 @@ print(annual_hashrate.loc[2020:2023])
 print(annual_eff.loc[2020:2023])
 print(annual_TWh.loc[2020:2023])
     
-print("Simulation complete. Results saved to 'simulation_results.csv'.")
+print(f"Simulation complete. Results saved to '../data/{file_name}.csv'.")
 

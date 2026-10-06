@@ -48,7 +48,7 @@ SETTING_ENV = {
     "price_data": "PRICE_PRICE_DATA",
 }
 DATA_SETTINGS = ("block_pace_data", "price_data")
-OPTIONAL_KEYS = {"figure", "original", "default", "expect_config"}
+OPTIONAL_KEYS = {"figure", "original", "default", "expect_config", "end_boundary_utc"}
 FORECAST_MODELS = ("powerlaw", "fixed", "constant", "linear", "logistic")
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 OUTPUT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")  # same rule as config.parse_output_name
@@ -154,6 +154,8 @@ def load_runs(path):
         ec = r.get("expect_config")
         if ec is not None and not (isinstance(ec, dict) and all(isinstance(k, str) for k in ec)):
             raise SystemExit(f"ERROR: {where}: expect_config must be an object")
+        if r.get("end_boundary_utc") is not None:
+            naive_iso(r["end_boundary_utc"], f"{where}: end_boundary_utc")
         runs.append(r)
     return runs
 
@@ -176,6 +178,9 @@ def settings_of(run, num_steps_override=0):
     if num_steps_override:
         s["num_steps"] = num_steps_override
     s["expect_config"] = run.get("expect_config") or {}
+    # A run whose last block is a UTC boundary block: run_one.py checks num_steps against
+    # the block data before starting. A --child-num-steps test run has no such end.
+    s["end_boundary_utc"] = None if num_steps_override else run.get("end_boundary_utc")
     return s
 
 

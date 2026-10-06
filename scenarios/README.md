@@ -20,7 +20,7 @@ can be resumed.
 | Run | `num_steps` | `historical_cutoff` | Efficiency | Forecast model | Target price (2032-01-01) | Output name |
 |---|---|---|---|---|---|---|
 | `testing` | 921,683 | 2025-01-01 00:00:00 | frontier | powerlaw | 1,000,000 | `simulation_results_testing_2026-10` |
-| `hindcasting` | 877,280 | 2010-07-17 00:00:00 | frontier | powerlaw | 1,000,000 | `simulation_results_hindcasting_2026-10` |
+| `hindcasting` | 877,259 | 2010-07-17 00:00:00 | frontier | powerlaw | 1,000,000 | `simulation_results_hindcasting_2026-10` |
 | `frozen_price_fixed` | 1,260,000 | 2025-11-08 17:58:32 | frozen | fixed | none | `simulation_results_efficiency_frozen_price_fixed_2026-10` |
 | `frozen_price_200k` | 1,260,000 | 2025-11-08 17:58:32 | frozen | powerlaw | 200,000 | `..._frozen_price_200k_2026-10` |
 | `frozen_price_500k` | 1,260,000 | 2025-11-08 17:58:32 | frozen | powerlaw | 500,000 | `..._frozen_price_500k_2026-10` |
@@ -37,7 +37,32 @@ Every run reads `combined_block_data.csv` and `market_price_min.csv` (see
 `"default": false`, so it runs only when named with `--runs`. It is described
 under "Reproduction check" below.
 
+### Boundaries are UTC instants (2026-10-05)
+
+Every period boundary is a UTC instant, and its boundary block is the first block
+whose `Block_Time_Seconds` is later than the instant. That block is the last block
+of the earlier period (`modules/boundaries.py`). This is how `simulation.py`'s
+historical/forecast switch already behaved.
+
+| Instant (UTC) | Boundary block | Next block starts |
+|---|---|---|
+| 2010-07-17 | 68,607 | the economic model in `hindcasting` (68,608) |
+| 2018-01-01 | 501,961 | the modern era, S and C_elec (501,962) |
+| 2025-01-01 | 877,259 | the out-of-sample test (877,260) |
+| 2025-11-01 | 921,683 | (end of `testing`) |
+| 2025-11-08 17:58:32 | 922,756 | the forecast in the eight scenarios (922,757) |
+
+`hindcasting` now ends at block 877,259 (it ended at 877,280, the first block
+stamped after Eastern midnight). A run with `end_boundary_utc` in `runs.json`
+(`testing`, `hindcasting`) must have `num_steps` equal to that instant's boundary
+block: `run_one.py` computes it from the run's block data and stops with exit
+status 3 before the simulation if it differs. `--child-num-steps` test runs skip
+the check.
+
 ### Where the settings come from
+
+The text below describes how the October 2026 settings were read off the
+original outputs. `hindcasting`'s `num_steps` has since changed (see above).
 
 Each setting was read off the saved original output in `data/results/`, not
 taken from comments in `main.py`. The originals were read in chunks with only
@@ -92,12 +117,14 @@ the needed columns.
 
 Every run in `runs.json` sets `block_pace_data = ../data/combined_block_data.csv`
 and `price_data = ../data/market_price_min.csv`. This was the authors' decision on
-2026-10-02: the re-runs use the input files the paper's runs used. Today's
-`config.py` default is still the `_latest` pair; the runs override it.
+2026-10-02: the re-runs use the input files the paper's runs used. Since
+2026-10-06 the `config.py` defaults are the same pair, so a run with no `PRICE_*`
+variables reads these files too. Until then the defaults (and the April tag's)
+were `market_price_min_latest.csv` and `combined_block_data_latest.csv`, and the
+calibration grids read `combined_block_data_latest.csv` (see `config.py`).
 
 The eight scenario originals were produced from `market_price_min.csv` and
-`combined_block_data.csv`. Today's `config.py` (and the April tag) reads
-`market_price_min_latest.csv` and `combined_block_data_latest.csv`. The evidence:
+`combined_block_data.csv`. The evidence:
 
 - The `fixed` forecast price, 91,821.06, is the last row of `market_price_min.csv`
   (2025-11-27 18:59:00). The last row of `market_price_min_latest.csv` is
@@ -151,8 +178,8 @@ before any data is loaded. So does any other variable whose name starts with
 `PRICE_`. That catches misspelt names. `config.py` sets
 `EFFICIENCY_SCENARIO` before `modules/efficiency_cbeci.py` imports it, so the
 override reaches that module as well. `TX_BLOCK_DATA` and `MACHINE_DATA_FILE`
-have no override. No module and no line of `main.py` names a `_latest` file;
-only `config.py` does.
+have no override. No module, no line of `main.py` and no default in `config.py`
+names a `_latest` file.
 
 When any of the three `main.py` variables is set, `main.py` prints one line
 `[run overrides] num_steps=... historical_cutoff=... file_name=...`.
@@ -415,10 +442,13 @@ The two sets:
 - `original` reads the CSVs in `data/results/` named in the `original` field of
   `runs.json`. These are the runs behind the paper's numbers. The electricity
   cost is `C_ELEC` in `config.py` at git tag `paper3-april-2026` ($50/MWh).
-- `new` reads `data/results/scenarios_2026-10/runs/<name>/data/<output_name>.csv`.
+- `new` reads `<runs-dir>/<name>/data/<output_name>.csv`. The default `--runs-dir` is
+  `data/results/scenarios_2026-10-rerun/runs`, the runs behind the paper's numbers.
+  Until 2026-10-06 it was `data/results/scenarios_2026-10/runs`, the October 2026
+  runs made before the clock and UTC fixes; pass `--runs-dir` to analyse those.
   Each run must have its `DONE.json`, and the CSV size must equal the size
   recorded there. The electricity cost is `config_in_effect.C_ELEC` from the
-  `DONE.json` files, which must agree ($40/MWh for the October 2026 runs).
+  `DONE.json` files, which must agree ($40/MWh for both the October 2026 runs and the re-run).
 
 `--csv NAME=PATH` replaces one run's CSV. The size check against `DONE.json` is
 skipped for a CSV given this way, because it is not that run's output.
@@ -452,8 +482,18 @@ block window of the 2018-2024 hindcast metrics (block-level, weekly and monthly)
 
 | Value | Blocks | Hashrate units | Source |
 |---|---|---|---|
-| `calibration` | [501,995, 877,280) | TH/s (multiplied by 1e-12 before `log1p`) | the objective function of the 2018-2024 calibration grid, `notebooks/sensitivity_analysis_2018-2024_rmsle_blocks.py` |
-| `notebook` | [505,227, 877,280) | H/s | notebook cells 14 to 16 |
+| `calibration` | [501,962, 877,260) | TH/s (multiplied by 1e-12 before `log1p`) | the objective function of the 2018-2024 calibration grid, `notebooks/sensitivity_analysis_2018-2024_rmsle_blocks.py`; heights from the UTC boundary blocks, computed from the block data at run time |
+| `calibration-eastern` | [501,995, 877,280) | TH/s | the window of the grids run before 2026-10-05 (Eastern midnight) |
+| `notebook` | [505,227, 877,280) | H/s | notebook cells 14 to 16; 505,227 is where the original hindcast's simulated clock reached 2018-01-01 |
+
+`--grid-optimum PATH` names the `phase2_optimum.json` whose RMSLE is checked
+against the `new` set's hindcast (default: `data/results/grid_2026-10-rerun/`,
+the grid whose optimum `config.py` holds; until 2026-10-06 it was the 2026-10-01
+grid). The reference
+applies under the window the grid recorded (`window_start_height`,
+`window_end_height_excl`), or under `calibration-eastern` for a grid that
+recorded none. `--compare` also refuses two outputs whose 2018-2024 height
+windows differ.
 
 The units change the RMSLE only in the ninth significant digit. They are set to the
 grid's so that the calibration-window RMSLE reproduces the grid's value exactly.
@@ -520,7 +560,7 @@ prints a warning and writes the differing settings at the top of
 `comparison.txt`.
 
 If a calibration grid file is missing (`data/results/sensitivity_grid_results_rmsle_2018_2024_blocks.csv`
-or `data/results/grid_2026-10-01/phase2_optimum.json`), the script prints a
+or `data/results/grid_2026-10-rerun/phase2_optimum.json`), the script prints a
 warning naming the file, and the reference read from it is not checked.
 
 ### How the figures differ from the notebook's

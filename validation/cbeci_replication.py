@@ -69,6 +69,7 @@ from config import (
     TX_BLOCK_DATA, PRICE_DATA, S_0, DIFFICULTY_BASE,
 )
 from modules.simulation import run_simulation
+from modules.boundaries import GENESIS_TIME_S
 from modules.debug import setup_logging
 from modules.price import load_market_prices, build_price_forecaster, build_price_lookup
 from modules.data_processing import load_block_paces, get_max_block_height, get_last_tx_fee_time
@@ -138,7 +139,9 @@ def main():
     real_paces = load_block_paces(BLOCK_PACE_DATA, TX_BLOCK_DATA)
     max_hist_block = get_max_block_height(BLOCK_PACE_DATA)
 
-    genesis_time_s = 1230988505  # 2009-01-03 13:15:05 UTC
+    # Genesis block time, 2009-01-03 18:15:05 UTC (was 1230988505 before 2026-10-05,
+    # the Eastern clock reading 13:15:05 taken as UTC; run_simulation now rejects it).
+    genesis_time_s = GENESIS_TIME_S
     start_dt = pd.to_datetime(genesis_time_s, unit="s", utc=True).tz_convert(None)
 
     initial_state = {

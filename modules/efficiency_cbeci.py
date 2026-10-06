@@ -616,7 +616,8 @@ def compute_dynamic_efficiency(
     daily_block_times: np.ndarray, # <-- NEW ARGUMENT
     total_operating: bool,
     *,
-    historical_cutoff: datetime | None = None
+    historical_cutoff: datetime | None = None,
+    modern_era: bool | None = None
 ) -> float:
     """
     CBECI-style dynamic efficiency (J / hash) for the simulation timestamp.
@@ -676,8 +677,12 @@ def compute_dynamic_efficiency(
             ## MODIFICATION: Calculate daily threshold (Theta_d = Rd / Pd)
             ## and append to *both* MAs.
             
-            # Choose era-specific electricity cost based on target_date
-            if target_date < T_STAR:
+            # Choose era-specific electricity cost. The simulation passes modern_era
+            # from the block height (modules/boundaries.py); a caller that passes None
+            # gets the era from target_date < T_STAR, which is right only for real
+            # (historical) UTC dates.
+            early_era = (target_date < T_STAR) if modern_era is None else (not modern_era)
+            if early_era:
                 C_used = C_elec_0
             else:
                 C_used = C_elec

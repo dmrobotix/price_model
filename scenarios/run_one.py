@@ -239,6 +239,24 @@ def main():
         say("config.py does not carry the requested settings; simulation NOT started")
         return 3
 
+    if s.get("end_boundary_utc"):
+        # The run must end at the boundary block of a UTC instant (modules/boundaries.py):
+        # the first block stamped later than the instant, which is the last block of the
+        # period before it. Checked against the run's block data before the long run.
+        try:
+            from modules.boundaries import boundary_block, load_block_times
+            end_block = boundary_block(load_block_times(config.BLOCK_PACE_DATA),
+                                       datetime.fromisoformat(s["end_boundary_utc"]))
+        except Exception as exc:
+            say(f"cannot find the boundary block of end_boundary_utc={s['end_boundary_utc']}: {exc!r}; "
+                "simulation NOT started")
+            return 3
+        say(f"end_boundary_utc {s['end_boundary_utc']}: boundary block {end_block}")
+        if s["num_steps"] != end_block:
+            say(f"MISMATCH num_steps {s['num_steps']} is not the boundary block {end_block} of "
+                f"{s['end_boundary_utc']} UTC; simulation NOT started")
+            return 3
+
     main_py = os.path.join(code_root, "main.py")
     if not hasattr(config, "RUN_OVERRIDE_VARS"):
         # Code without the PRICE_* overrides ignores them: its hardcoded main.py

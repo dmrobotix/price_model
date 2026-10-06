@@ -14,16 +14,21 @@ from modules.simulation import run_simulation
 from modules.network import calc_core_hashrate
 from modules.price import build_price_lookup
 from config import DEFAULT_TARGET, BLOCK_PACE_DATA
+from modules.boundaries import GENESIS_TIME_S, check_boundary_blocks
 
 # Import efficiency module to clear caches
 import modules.efficiency_cbeci as eff_module 
 
 # ---------------------------------------------------------
 # Evaluation window: ONLY use pre-2018 era
-# 2010-07-17 (start of minute price data) through 2017-12-31
+# 2010-07-17 00:00 UTC (start of minute price data) to 2018-01-01 00:00 UTC.
+# The window is a block-height window [WINDOW_START_HEIGHT, WINDOW_END_HEIGHT_EXCL),
+# computed from the UTC block times after the data are loaded (modules/boundaries.py):
+# from the first block whose time the economic model sets (68,608) through the
+# boundary block of 2018-01-01 (501,961). Before 2026-10-05 it was [68633, 501995),
+# the blocks of Eastern midnight. The simulated timestamps are not used to select
+# blocks.
 # ---------------------------------------------------------
-EVAL_START = datetime(2010, 7, 17)
-EVAL_END   = datetime(2018, 1, 1)   # exclusive upper bound (pre-2018)
 
 # Track best results globally (for S_0, C_elec_0)
 best = {'rmsle': np.inf, 'S_0': None, 'C_elec_0': None, 'n': 0}
@@ -33,8 +38,10 @@ def objective_function(S_candidate, initial_state, params, num_blocks_to_fit, H_
     Runs the simulation with a given S_0 and C_elec_0 (early-era parameters),
     computes hashrate error vs historical.
 
-    RMSLE is evaluated only over blocks whose simulated timestamps
-    are in the pre-2018 window [EVAL_START, EVAL_END).
+    RMSLE is evaluated only over the block heights
+    [WINDOW_START_HEIGHT, WINDOW_END_HEIGHT_EXCL) = [68608, 501962), which the module
+    computes from the UTC boundary blocks after loading the data. The simulated
+    timestamps are not used to select blocks.
     """
     # --- 1. RESET GLOBAL CACHES (Efficiency Module) ---
     try:
@@ -98,17 +105,10 @@ def objective_function(S_candidate, initial_state, params, num_blocks_to_fit, H_
     # H_arr is in H/s. 
     sim_th = pd.Series(H_arr * 1e-12, index=sim_df['block_height'].astype(int))
 
-    # Restrict to pre-2018 evaluation window based on simulated timestamps
-    # time_mask = (sim_df['Timestamp'] >= EVAL_START) & (sim_df['Timestamp'] < EVAL_END)
-    # eval_heights = sim_df.loc[time_mask, 'block_height'].astype(int)
-    # sim_th = sim_th.loc[eval_heights]
-    # sim_th = sim_th[time_mask]
-    # Define the exact height that started 2018 historically
-    # Block 501951 was the first block mined after 2018-01-01 00:00:00 UTC
-    MAX_PRE2018_HEIGHT = 501995 
-    MIN_PRE2018_HEIGHT = 68633
-    # Filter by Height (Deterministic) instead of Time (Variable)
-    height_mask = (sim_df['block_height'] >= MIN_PRE2018_HEIGHT) & (sim_df['block_height'] < MAX_PRE2018_HEIGHT)
+    # Restrict to the pre-2018 evaluation window by block height. The heights come from
+    # the UTC boundary blocks (see the comment above `best`); the simulated timestamps
+    # are not used, because the simulated clock differs from the real one.
+    height_mask = (sim_df['block_height'] >= WINDOW_START_HEIGHT) & (sim_df['block_height'] < WINDOW_END_HEIGHT_EXCL)
     sim_th = sim_th[height_mask]
 
     # Get Historical Data
@@ -187,6 +187,12 @@ market_prices = load_market_prices("../data/market_price_min.csv")
 real_paces = load_block_paces(BLOCK_PACE_DATA, TX_BLOCK_DATA)
 max_hist_block = get_max_block_height(BLOCK_PACE_DATA)
 
+# Boundary blocks from the UTC block times, checked against modules/boundaries.py.
+BOUNDARY_BLOCKS = check_boundary_blocks(real_paces)
+WINDOW_START_HEIGHT = BOUNDARY_BLOCKS["econ_start"] + 1     # 68,608: first block whose time the economic model sets
+WINDOW_END_HEIGHT_EXCL = BOUNDARY_BLOCKS["era_split"] + 1  # 501,962: first modern-era block
+print(f"RMSLE window: blocks [{WINDOW_START_HEIGHT}, {WINDOW_END_HEIGHT_EXCL})")
+
 # --- CRITICAL FIX: Pre-calculate H_hist exactly like main.py ---
 print("Pre-calculating historical hashrate baseline...")
 hist_df = real_paces.copy()
@@ -218,7 +224,8 @@ initial_state = {
     'target': DEFAULT_TARGET,
     'D': INITIAL_DIFFICULTY,
     'H': INITIAL_HASHRATE,
-    'sim_timestamp': datetime(2009, 1, 3, 13, 15, 5),
+    'sim_timestamp_s': GENESIS_TIME_S,   # 2009-01-03 18:15:05 UTC (was 13:15:05, the Eastern clock)
+    'sim_timestamp': datetime(2009, 1, 3, 18, 15, 5),
     'block_height': 0,
     'Cumulative_Seconds': 0,
     'difficulty_adjusted': False,

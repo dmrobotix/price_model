@@ -1,14 +1,30 @@
 import copy
+import math
 import traceback
 from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 import logging
 from modules import network, economics, energy, debug
+from modules.boundaries import GENESIS_TIME_S, ERA_SPLIT_UTC, boundary_block, utc_seconds
 from modules.efficiency_cbeci import compute_dynamic_efficiency, reset_run_state
 from modules.price import get_price_for_date, forecast_price
 from modules.economics import apply_hashrate_shock
 from config import EXPECTED_BLOCK_TIME, S as S_CONFIG, CALIBRATION_MODE, TX_FEE_PCT
+
+def _advance_clock(state: dict) -> None:
+    """Advance the simulated clock by state['T_block'] seconds without losing time.
+
+    state['sim_clock_s'] is the exact clock (float seconds, UTC epoch). The block's
+    integer timestamp state['sim_timestamp_s'] is the floor of it, so it is never more
+    than 1 s behind the exact clock and the error does not accumulate. Before
+    2026-10-05 the integer timestamp itself was advanced by int(T_block), which dropped
+    the fractional part of every block time (about 0.7 s per block at T = 599.7 s).
+    """
+    state['sim_clock_s'] = float(state['sim_clock_s']) + float(state['T_block'])
+    state['sim_timestamp_s'] = math.floor(state['sim_clock_s'])
+    state['sim_timestamp'] = pd.to_datetime(state['sim_timestamp_s'], unit="s", utc=True).tz_convert(None)
+
 
 def simulate_step(state: dict, params: dict, block_height: int, history: list) -> dict:
     """
@@ -18,6 +34,9 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
     for key in ('target', 'D', 'H', 'sim_timestamp', 'sim_timestamp_s'):
         if key not in state:
             raise ValueError(f"Missing required state key: '{key}'.")
+    # Exact clock (float seconds); see _advance_clock. A state without it starts it
+    # at the integer timestamp.
+    state.setdefault('sim_clock_s', float(state['sim_timestamp_s']))
 
     try:
         # --- Halving rule ---
@@ -70,6 +89,13 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
         # --- Determine block time ---
         cal_mode = params.get('calibration_mode', CALIBRATION_MODE)
         S_eff = params.get('S', S_CONFIG) if cal_mode else S_CONFIG
+
+        # --- Era (S_0/C_elec_0 before, S/C_elec after) by block height ---
+        # The era split is the 2018-01-01 UTC boundary (modules/boundaries.py): blocks up
+        # to params['last_early_era_height'] are early era, later blocks modern era. The
+        # split is by height so that a run whose simulated clock differs from the real
+        # one changes era at the same block as the calibration windows.
+        modern_era = block_height > params['last_early_era_height']
 
         # --- Gather daily data for CBECI (Optimization) ---
         if not cal_mode or (cal_mode and now_dt >= cutoff_dt):
@@ -149,13 +175,13 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                 # Update timestamp strictly from historical data
                 hist_ts_s = int(bp.loc[block_height, "Block_Time_Seconds"])
                 state["sim_timestamp_s"] = hist_ts_s
+                state["sim_clock_s"] = float(hist_ts_s)
                 # Sync datetime object (UTC-naive)
                 state["sim_timestamp"] = pd.to_datetime(hist_ts_s, unit="s", utc=True).tz_convert(None)
             else:
                 # Fallback if historical data is missing (should verify cutoff alignment)
                 state['T_block'] = EXPECTED_BLOCK_TIME
-                state["sim_timestamp_s"] += int(state['T_block'])
-                state["sim_timestamp"] = pd.to_datetime(state["sim_timestamp_s"], unit="s", utc=True).tz_convert(None)
+                _advance_clock(state)
 
             if not cal_mode: 
                 # --- Efficiency ---
@@ -178,7 +204,8 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                         daily_difficulties=daily_difficulties,
                         daily_block_times=daily_block_times,
                         total_operating=params['total_operating'],
-                        historical_cutoff=params['last_hist_time']
+                        historical_cutoff=params['last_hist_time'],
+                        modern_era=modern_era
                     )
                 
                 state['R_t'] = economics.calc_expected_revenue(state['R_block'], state['TX_fee'], state['target'])
@@ -189,6 +216,17 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
 
         else: 
             # FORECAST MODE
+            # The first forecast-mode block must be the one modules/boundaries.py assigns
+            # to the cutoff (its boundary block + 1); run_simulation sets the expected
+            # value when the cutoff lies inside the block data.
+            if params.get('_first_forecast_block') is None:
+                params['_first_forecast_block'] = block_height
+                expected = params.get('_expected_first_forecast_block')
+                if expected is not None and block_height != expected:
+                    raise RuntimeError(
+                        f"the economic model took over at block {block_height}, but the UTC "
+                        f"boundary rule puts the first forecast block of cutoff "
+                        f"{params['historical_cutoff']} at {expected}")
             fix_flag = params.get('fix_efficiency', False)
             eff_cutoff = params['last_hist_time']
             
@@ -208,7 +246,8 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                     daily_difficulties=daily_difficulties,
                     daily_block_times=daily_block_times,
                     total_operating=params['total_operating'],
-                    historical_cutoff=params['last_hist_time']
+                    historical_cutoff=params['last_hist_time'],
+                    modern_era=modern_era
                 )
             
             state['R_t'] = economics.calc_expected_revenue(state['R_block'], state['TX_fee'], state['target'])
@@ -221,7 +260,8 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                 S_1=S_eff,
                 C_elec_0=params['C_elec_0'],
                 S_0=params['S_0'],
-                ts=now_dt
+                ts=now_dt,
+                modern_era=modern_era
             )
 
             if cal_mode:
@@ -233,8 +273,7 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
             state['mean_bt'] = mean_bt
             
             # Advance simulation time
-            state['sim_timestamp_s'] += int(state['T_block'])
-            state['sim_timestamp'] = pd.to_datetime(state['sim_timestamp_s'], unit="s", utc=True).tz_convert(None)
+            _advance_clock(state)
 
         return state
 
@@ -251,14 +290,48 @@ def run_simulation(initial_state: dict, params: dict, num_steps: int, initial_bl
     
     # Ensure sim_timestamp_s is present
     if 'sim_timestamp_s' not in state:
-        # Fallback if not initialized: convert existing datetime to seconds
+        # Fallback if not initialized: convert existing datetime (UTC-naive) to seconds
         ts = state.get('sim_timestamp')
         if ts:
-             state['sim_timestamp_s'] = int(ts.replace(tzinfo=timezone.utc).timestamp())
+             state['sim_timestamp_s'] = utc_seconds(ts)
         else:
-             state['sim_timestamp_s'] = 1230988505 # Genesisish time
-             
+             state['sim_timestamp_s'] = GENESIS_TIME_S
+    state['sim_timestamp_s'] = int(state['sim_timestamp_s'])
+    # The integer seconds are the source of truth; the datetime and the exact float
+    # clock (see _advance_clock) are derived from them.
+    state['sim_timestamp'] = pd.to_datetime(state['sim_timestamp_s'], unit="s", utc=True).tz_convert(None)
+    state['sim_clock_s'] = float(state['sim_timestamp_s'])
+
+    bp = params['block_paces']
+    # A run that starts at a block in the data must start at that block's real UTC time
+    # (block 0: the genesis time, 1231006505).
+    if initial_block_height in bp.index:
+        real_ts = int(bp.loc[initial_block_height, 'Block_Time_Seconds'])
+        if state['sim_timestamp_s'] != real_ts:
+            raise ValueError(
+                f"initial state is stamped {state['sim_timestamp_s']} but block "
+                f"{initial_block_height} is stamped {real_ts} (UTC) in the block data")
+
     state.setdefault('last_retarget_ts', state['sim_timestamp'])
+
+    # Period boundaries by block height (modules/boundaries.py). The era split comes
+    # from the UTC block times unless the caller passes it.
+    if 'last_early_era_height' not in params:
+        params['last_early_era_height'] = boundary_block(bp, ERA_SPLIT_UTC)
+    # Expected first forecast-mode block: the cutoff's boundary block + 1, when the run
+    # starts in historical mode at or before that boundary block and the cutoff lies
+    # inside the block data. simulate_step checks it when the switch happens.
+    params['_first_forecast_block'] = None
+    params['_expected_first_forecast_block'] = None
+    cutoff = params.get('historical_cutoff')
+    if isinstance(cutoff, (datetime, pd.Timestamp)) and len(bp) > 0:
+        try:
+            b_cut = boundary_block(bp, cutoff)
+        except ValueError:
+            b_cut = None  # no block in the data is stamped after the cutoff
+        if (b_cut is not None and initial_block_height <= b_cut
+                and state['sim_timestamp_s'] <= utc_seconds(cutoff)):
+            params['_expected_first_forecast_block'] = b_cut + 1
     history = [copy.copy(state)]
     block_height = initial_block_height
 

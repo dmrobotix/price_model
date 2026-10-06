@@ -262,6 +262,10 @@ class Orchestrator:
         if opt[yc] in (min(p[1] for p in pts), max(p[1] for p in pts)):
             edge_axes.append(yc)
         opt["on_grid_edge"] = bool(edge_axes)
+        # The RMSLE block-height window, when the points record it (run_grid_point.py).
+        if "window_start_height" in best.index and pd.notna(best["window_start_height"]):
+            opt["window_start_height"] = int(best["window_start_height"])
+            opt["window_end_height_excl"] = int(best["window_end_height_excl"])
         if fixed is not None:
             opt["fixed_S_0"], opt["fixed_C_elec_0"] = fixed["S_0"], fixed["C_elec_0"]
         path = os.path.join(self.out, GRIDS[grid]["optimum"])

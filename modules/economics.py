@@ -46,7 +46,8 @@ def calc_expected_revenue(R_block, tx_fees, target):
     return ((R_block + tx_fees) * target) / 2**256
 
 def economic_to_block_time(R_pe: float, base_time: float, C_elec_1: float,
-                           S_1: float, C_elec_0: float, S_0: float, ts: pd.Timestamp) -> float:
+                           S_1: float, C_elec_0: float, S_0: float, ts: pd.Timestamp,
+                           modern_era: bool | None = None) -> float:
 #                             lower_multiplier: float = 0.5, upper_multiplier: float = 1.5) -> float:
     """
     Map an economic metric (price-energy adjusted revenue, R_pe) to an average block time,
@@ -61,10 +62,17 @@ def economic_to_block_time(R_pe: float, base_time: float, C_elec_1: float,
         C_elec (float): Electricity cost.
         s (float): Sensitivity scaling factor.
         
+        modern_era (bool | None): True for the modern era (S_1, C_elec_1), False for
+            the early era (S_0, C_elec_0). The simulation passes it from the block
+            height (modules/boundaries.py). If None, the era is taken from ts < T_STAR,
+            which is right only when ts is a real (historical) UTC time.
+
     Returns:
         float: The adjusted block time in seconds.
     """
-    if ts < T_STAR:
+    if modern_era is None:
+        modern_era = not (ts < T_STAR)
+    if not modern_era:
         S = S_0
         C_elec = C_elec_0
     else:

@@ -1,8 +1,15 @@
-# Input data and run outputs. The data directory is not published; see README.md.
-# "data/" matches a directory; "/data" also matches a symbolic link named data at
-# the repository root.
+# Input data and run outputs. The data directory is not published, except the CBECI
+# machine table and its licence notice; see README.md. "data/" matches a directory
+# named data at any depth (for example the per-run data/ folders of the scenario
+# driver); "/data" also matches a symbolic link named data at the repository root.
+# "!/data/" re-includes the root data directory itself, so that git looks inside it,
+# and "/data/*" then excludes everything in it but the two files named below.
 data/
 /data
+!/data/
+/data/*
+!/data/cbeci_machines_090325.csv
+!/data/LICENSE.md
 
 # Python bytecode and Jupyter checkpoints
 __pycache__/

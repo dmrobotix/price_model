@@ -153,6 +153,12 @@ def main():
         values += [fixed_s0, fixed_c0]
     header += ["num_steps", "elapsed_s", "setup_s", "peak_rss_mb", "git_head", "git_dirty"]
     values += [int(num_steps), elapsed_s, setup_s, peak_rss_mb, git_head, git_dirty]
+    # RMSLE block-height window [start, end) of the grid script, computed there from the
+    # UTC boundary blocks (modules/boundaries.py). Scripts from before 2026-10-05 have no
+    # such attributes; their window was the Eastern-midnight one.
+    if hasattr(mod, "WINDOW_START_HEIGHT"):
+        header += ["window_start_height", "window_end_height_excl"]
+        values += [int(mod.WINDOW_START_HEIGHT), int(mod.WINDOW_END_HEIGHT_EXCL)]
     write_row_atomic(out_path, header, values)
     print(f"[run_grid_point] wrote {out_path}: RMSLE={rmsle:.6e} elapsed={elapsed_s:.1f}s "
           f"peak_rss={peak_rss_mb:.0f} MB", flush=True)

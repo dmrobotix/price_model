@@ -7,7 +7,7 @@ the eight forecast scenarios), computes the statistics the paper reports, and dr
 Figures 4 to 9. The two sets are:
 
   original  the CSVs in data/results/ that the paper's numbers and figures came from;
-  new       the re-runs in data/results/scenarios_2026-10/runs/<name>/data/
+  new       the re-runs in data/results/scenarios_2026-10-rerun/runs/<name>/data/ by default
             (scenarios/runs.json gives each run's output name).
 
 Which notebook cell drew which manuscript figure. The images embedded in the
@@ -44,11 +44,27 @@ Figures 4 and 5) bin and plot both hashrate series by one time column:
 The forecast scenario statistics and Figures 6-9 always use Timestamp (model time).
 
 2018-2024 hindcast metric window (--hindcast-window):
-  calibration (default)  blocks [501,995, 877,280), hashrate in TH/s, as the objective
+  calibration (default)  blocks [501,962, 877,260), hashrate in TH/s, as the objective
                          function of the 2018-2024 calibration grid
-                         (notebooks/sensitivity_analysis_2018-2024_rmsle_blocks.py);
+                         (notebooks/sensitivity_analysis_2018-2024_rmsle_blocks.py). The
+                         heights are the UTC boundary blocks of 2018-01-01 and 2025-01-01
+                         plus one (modules/boundaries.py), computed from the block data
+                         at run time;
+  calibration-eastern    blocks [501,995, 877,280), TH/s: the window of the calibration
+                         grids run before 2026-10-05 (the first blocks stamped at or after
+                         Eastern midnight), kept to reproduce those grids' RMSLE;
   notebook               blocks [505,227, 877,280), hashrate in H/s, as cells 14-16.
+                         505,227 is the first block whose simulated Timestamp in the
+                         original hindcast reaches 2018-01-01; 877,280 is Eastern midnight.
 The weekly and monthly metrics use the same block window and units.
+
+Boundaries (modules/boundaries.py): every boundary is a UTC instant; the boundary block
+is the first block stamped later than it, and it is the last block of the earlier
+period. The block-level statistics use height windows built that way. The monthly
+Sim/Hist ratios and Figures 4 and 5 bin rows by calendar month of the clock column, so
+they select rows by UTC time instead; on the historical clock that differs from the
+height rule only in the boundary block itself (stamped after the instant, so binned
+into the later month).
 
 Cell 22 used FORECAST_START from an earlier kernel state that the notebook does not
 show. Any start from 2025-11-08 00:00 to 2025-11-09 00:00 reproduces its printed
@@ -120,15 +136,25 @@ from scipy import stats  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 RESULTS = os.path.join(ROOT, "data", "results")
-NEW_RUNS_DIR = os.path.join(RESULTS, "scenarios_2026-10", "runs")
+# The runs behind the paper's numbers (re-run after the clock and UTC fixes, with the
+# optimum of grid_2026-10-rerun). Until 2026-10-06 the default was scenarios_2026-10,
+# the October 2026 runs before those fixes; pass --runs-dir to analyse them.
+NEW_RUNS_DIR = os.path.join(RESULTS, "scenarios_2026-10-rerun", "runs")
 RUNS_JSON = os.path.join(HERE, "runs.json")
 APRIL_TAG = "paper3-april-2026"
 CHUNK = 200_000
 TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+from modules import boundaries  # noqa: E402
+
 # ---------------------------------------------------------------- notebook constants
+# First out-of-sample block: the UTC boundary block of 2025-01-01 plus one. The value is
+# the notebook's (cells 11, 12); boundary_heights() checks it against the block data.
 OOS_START_HEIGHT = 877_260                                    # cells 11, 12
-TEST_T_START = pd.Timestamp("2025-01-01 00:00:00", tz="UTC")  # cell 20
+# Time windows are UTC instants (Hist_Timestamp and Timestamp are UTC-naive).
+TEST_T_START = pd.Timestamp(boundaries.OOS_START_UTC, tz="UTC")  # cell 20
 TEST_T_END = pd.Timestamp("2025-10-31 23:59:59", tz="UTC")
 HIND_WINDOWS = [                                              # cell 18
     ("2010-07-17 to 2017-12-31", pd.Timestamp("2010-07-17 00:00:00", tz="UTC"),
@@ -139,13 +165,20 @@ HIND_WINDOWS = [                                              # cell 18
 # 2018-2024 hindcast metrics: block-height window [start, end) and the unit scale applied to
 # both hashrate series before log1p. "notebook" is cells 14-16 (H/s). "calibration" is the
 # window and units of the 2018-2024 calibration grid's objective function
-# (notebooks/sensitivity_analysis_2018-2024_rmsle_blocks.py: blocks [501,995, 877,280), TH/s).
+# (notebooks/sensitivity_analysis_2018-2024_rmsle_blocks.py), from the UTC boundary blocks;
+# its heights are filled in by boundary_heights() from the block data. "calibration-eastern"
+# is the window of the grids run before 2026-10-05.
 HIND_METRIC_WINDOWS = {
     "notebook": (505_227, 877_280, 1.0),
-    "calibration": (501_995, 877_280, 1e-12),
+    "calibration": (None, None, 1e-12),
+    "calibration-eastern": (501_995, 877_280, 1e-12),
 }
 ORIG_GRID_CSV = os.path.join(RESULTS, "sensitivity_grid_results_rmsle_2018_2024_blocks.csv")
-NEW_GRID_OPTIMUM = os.path.join(RESULTS, "grid_2026-10-01", "phase2_optimum.json")
+# The 2018-2024 grid whose optimum config.py holds (the paper's calibration). It records
+# its window, so its RMSLE applies under the "calibration" window. Until 2026-10-06 the
+# default was grid_2026-10-01, the grid run before the clock and UTC fixes.
+NEW_GRID_OPTIMUM = os.path.join(RESULTS, "grid_2026-10-rerun", "phase2_optimum.json")
+GRID_OPTIMUM = NEW_GRID_OPTIMUM  # --grid-optimum replaces it
 CLOCK_COLUMN = {"historical": "Hist_Timestamp", "simulated": "Timestamp"}
 MONTH_RULE = "MS"
 WEEK_RULE = "W-SUN"
@@ -210,7 +243,7 @@ REFERENCES = [
      NB_WINDOW_SIM_CLOCK),
     ("hindcast.metrics_2018_2024.block_level.RMSLE", 0.2133, 5e-5,
      "paper / CODE_AUDIT F: 2018-2024 grid optimum RMSLE 0.2133",
-     {"hindcast_window": "calibration", "set": "original"}),
+     {"hindcast_window": "calibration-eastern", "set": "original"}),
     ("scenarios.frozen_price_1M.annual_energy_TWh.2031", 824.8, 0.05, "CODE_AUDIT F (824.8 TWh)"),
     ("scenarios.frontier_price_1M.peak_Rpe_forecast", 221, 0.5, "CODE_AUDIT F ($221/MWh)"),
     ("scenarios.frozen_price_fixed.share_Rpe_below_c_elec", 0.623, 5e-4,
@@ -291,25 +324,63 @@ def finalize(tmp, out):
     os.rename(tmp, out)
 
 
+def boundary_heights():
+    """Fill in the "calibration" window from the UTC boundary blocks of the block data the
+    runs read (runs.json, testing run), and check OOS_START_HEIGHT against the same data.
+    Returns {"blocks": the boundary blocks, "block_data": the file, "calibration_window":
+    [start, end)}, which run_set writes into stats.json and summary.txt."""
+    runs, _ = load_runs()
+    rel = runs["testing"]["block_pace_data"]
+    path = os.path.join(ROOT, "data", rel[len("../data/"):] if rel.startswith("../data/") else rel)
+    b = boundaries.check_boundary_blocks(boundaries.load_block_times(path))
+    if OOS_START_HEIGHT != b["oos_start"] + 1:
+        sys.exit(f"OOS_START_HEIGHT {OOS_START_HEIGHT} is not the boundary block of "
+                 f"{boundaries.OOS_START_UTC} UTC plus one ({b['oos_start'] + 1})")
+    HIND_METRIC_WINDOWS["calibration"] = (b["era_split"] + 1, b["oos_start"] + 1, 1e-12)
+    say(f"boundary blocks from {os.path.relpath(path, ROOT)}: {b}; calibration window "
+        f"[{b['era_split'] + 1}, {b['oos_start'] + 1})")
+    return {"blocks": b, "block_data": os.path.relpath(path, ROOT),
+            "calibration_window": [b["era_split"] + 1, b["oos_start"] + 1]}
+
+
+def window_name(h0, h1):
+    """Name of the HIND_METRIC_WINDOWS entry with height window [h0, h1), or None."""
+    for name, (a, b, _) in HIND_METRIC_WINDOWS.items():
+        if name != "notebook" and (a, b) == (h0, h1):
+            return name
+    return None
+
+
 def file_references():
     """References read from the calibration grid outputs: the minimum RMSLE of the
-    2018-2024 grid that calibrated each set. They apply under the calibration window."""
+    2018-2024 grid that calibrated each set. Each applies under the window that grid used:
+    calibration-eastern for the grids run before 2026-10-05, otherwise the window recorded
+    in the optimum file."""
     refs = []
     if os.path.exists(ORIG_GRID_CSV):
         g = pd.read_csv(ORIG_GRID_CSV)
         refs.append(("hindcast.metrics_2018_2024.block_level.RMSLE", float(g["RMSLE"].min()), 1e-9,
                      f"minimum RMSLE in {os.path.relpath(ORIG_GRID_CSV, ROOT)}",
-                     {"hindcast_window": "calibration", "set": "original"}))
+                     {"hindcast_window": "calibration-eastern", "set": "original"}))
     else:
         warn(f"grid file {ORIG_GRID_CSV} not found; its RMSLE reference is not checked")
-    if os.path.exists(NEW_GRID_OPTIMUM):
-        with open(NEW_GRID_OPTIMUM) as f:
+    if os.path.exists(GRID_OPTIMUM):
+        with open(GRID_OPTIMUM) as f:
             opt = json.load(f)
-        refs.append(("hindcast.metrics_2018_2024.block_level.RMSLE", float(opt["RMSLE"]), 1e-12,
-                     f"RMSLE in {os.path.relpath(NEW_GRID_OPTIMUM, ROOT)}",
-                     {"hindcast_window": "calibration", "set": "new"}))
+        if "window_start_height" in opt:
+            win = window_name(opt["window_start_height"], opt["window_end_height_excl"])
+            if win is None:
+                warn(f"{GRID_OPTIMUM} records window [{opt['window_start_height']}, "
+                     f"{opt['window_end_height_excl']}), which matches no --hindcast-window; "
+                     f"its RMSLE reference is not checked")
+        else:
+            win = "calibration-eastern"  # grids run before 2026-10-05 record no window
+        if win is not None:
+            refs.append(("hindcast.metrics_2018_2024.block_level.RMSLE", float(opt["RMSLE"]), 1e-12,
+                         f"RMSLE in {os.path.relpath(GRID_OPTIMUM, ROOT)}",
+                         {"hindcast_window": win, "set": "new"}))
     else:
-        warn(f"grid file {NEW_GRID_OPTIMUM} not found; its RMSLE reference is not checked")
+        warn(f"grid file {GRID_OPTIMUM} not found; its RMSLE reference is not checked")
     return refs
 
 
@@ -1032,7 +1103,14 @@ def summary_text(st, ver):
     L = [f"Set: {st['set']}    C_elec (break-even): ${st['provenance']['c_elec']:g}/MWh "
          f"({st['provenance']['c_elec_source']})",
          f"Clock for comparisons with history: {st['clock']} ({CLOCK_COLUMN[st['clock']]})    "
-         f"2018-2024 hindcast metric window: {st['hindcast_window']}", ""]
+         f"2018-2024 hindcast metric window: {st['hindcast_window']}"]
+    bb = st.get("boundary_blocks")
+    if bb:
+        L.append(f"Boundary blocks (last block of the earlier period; UTC rule, "
+                 f"modules/boundaries.py) from {bb['block_data']}: {bb['blocks']}; "
+                 f"calibration window [{bb['calibration_window'][0]}, "
+                 f"{bb['calibration_window'][1]})")
+    L.append("")
     L.append("Out-of-sample test (testing run, block_height >= %d)" % o["oos_start_height"])
     L.append(f"  first forecast block {o['first_forecast_block']}, last block {o['last_block']} "
              f"at {o['last_timestamp']}")
@@ -1121,17 +1199,22 @@ def summary_text(st, ver):
 
 
 # ------------------------------------------------------------------------- compare
-DEFINITION_KEYS = ("clock", "hindcast_window")
+DEFINITION_KEYS = ("clock", "hindcast_window", "hindcast_height_window")
 
 
 def definition_mismatch(orig_dir, new_dir):
     """[(key, value in orig, value in new)] for the definition settings that differ. A
-    stats.json written before these settings existed has no such key (value None)."""
+    stats.json written before these settings existed has no such key (value None).
+    hindcast_height_window is compared as well as the window's name, because the name
+    "calibration" meant blocks [501,995, 877,280) before 2026-10-05."""
     vals = []
     for d in (orig_dir, new_dir):
         with open(os.path.join(d, "stats.json")) as f:
             st = json.load(f)
-        vals.append({k: st.get(k) for k in DEFINITION_KEYS})
+        v = {k: st.get(k) for k in DEFINITION_KEYS}
+        v["hindcast_height_window"] = (st.get("hindcast", {}).get("metrics_2018_2024", {})
+                                       .get("height_window"))
+        vals.append(v)
     return [(k, vals[0][k], vals[1][k]) for k in DEFINITION_KEYS if vals[0][k] != vals[1][k]]
 
 
@@ -1200,11 +1283,16 @@ def main():
                          "monthly ratios, their windows, Figures 4 and 5): historical = "
                          "Hist_Timestamp, simulated = Timestamp as in the notebook "
                          "(default %(default)s)")
-    ap.add_argument("--hindcast-window", choices=["calibration", "notebook"],
+    ap.add_argument("--hindcast-window", choices=["calibration", "calibration-eastern", "notebook"],
                     default="calibration",
-                    help="2018-2024 hindcast metrics: calibration = blocks [501,995, 877,280) in "
-                         "TH/s as the calibration grid; notebook = [505,227, 877,280) in H/s as "
-                         "cells 14-16 (default %(default)s)")
+                    help="2018-2024 hindcast metrics: calibration = blocks [501,962, 877,260) in "
+                         "TH/s, the UTC boundary blocks, as the calibration grid; "
+                         "calibration-eastern = [501,995, 877,280) in TH/s, the grids run before "
+                         "2026-10-05; notebook = [505,227, 877,280) in H/s as cells 14-16 "
+                         "(default %(default)s)")
+    ap.add_argument("--grid-optimum", default=NEW_GRID_OPTIMUM,
+                    help="phase2_optimum.json of the 2018-2024 grid that calibrated the new set; "
+                         "its RMSLE is a reference for the hindcast (default %(default)s)")
     ap.add_argument("--compare", nargs=2, metavar=("ORIG_DIR", "NEW_DIR"),
                     help="compare two output directories instead of analysing a set")
     ap.add_argument("--allow-mixed-definitions", action="store_true",
@@ -1212,6 +1300,8 @@ def main():
                          "differ (refused otherwise); the mismatch is recorded at the top of "
                          "comparison.txt")
     args = ap.parse_args()
+    global GRID_OPTIMUM
+    GRID_OPTIMUM = os.path.abspath(args.grid_optimum)
 
     out = os.path.abspath(args.out_dir)
     if os.path.exists(out):
@@ -1240,6 +1330,7 @@ def main():
         return
     if not args.set:
         sys.exit("--set is required unless --compare is given")
+    args.boundary_blocks = boundary_heights()
     paths, c_elec, prov = resolve(args)
     sizes = parse_size(args.size_in)
     fig3 = load_fig3_helpers()
@@ -1264,7 +1355,8 @@ def run_set(args, final_out, out, paths, c_elec, prov, sizes, fig3, docx):
     say(f"set {args.set}, C_elec {c_elec:g} ({prov['c_elec_source']}), clock {args.clock} "
         f"({tcol}), hindcast window {args.hindcast_window}, out {final_out}")
     st = {"set": args.set, "clock": args.clock, "clock_column": tcol,
-          "hindcast_window": args.hindcast_window, "provenance": prov}
+          "hindcast_window": args.hindcast_window, "provenance": prov,
+          "boundary_blocks": args.boundary_blocks}
     say(f"reading {paths['testing']}")
     test = read_hashrate_run(paths["testing"])
     st["oos"], test_win, test_mr = oos_stats(test, tcol)

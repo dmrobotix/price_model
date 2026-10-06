@@ -52,7 +52,9 @@ import pandas as pd  # noqa: E402
 from matplotlib import font_manager  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GRID_DIR = "data/results/grid_2026-10-01"
+# The grid whose optimum config.py holds (the paper's calibration). Until 2026-10-06 the
+# default was data/results/grid_2026-10-01, the grid run before the clock and UTC fixes.
+GRID_DIR = "data/results/grid_2026-10-rerun"
 DEFAULT_PRE = os.path.join(GRID_DIR, "grid_pre2018.csv")
 DEFAULT_MODERN = os.path.join(GRID_DIR, "grid_2018_2024.csv")
 DEFAULT_OUT = os.path.join(GRID_DIR, "figure3_calibration_grid.png")

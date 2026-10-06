@@ -12,8 +12,17 @@ only. Running them directly behaves as before.
 
 | Grid | Script | Varied | Fixed (from `config.py` unless overridden) | RMSLE window (block heights) |
 |---|---|---|---|---|
-| `pre2018` | `sensitivity_analysis_pre2018_blocks.py` | `S_0`, `C_elec_0` | `S`, `C_elec` | [68633, 501995) |
-| `modern` | `sensitivity_analysis_2018-2024_rmsle_blocks.py` | `S`, `C_elec` | `S_0`, `C_elec_0` | [501995, 877280) |
+| `pre2018` | `sensitivity_analysis_pre2018_blocks.py` | `S_0`, `C_elec_0` | `S`, `C_elec` | [68608, 501962) |
+| `modern` | `sensitivity_analysis_2018-2024_rmsle_blocks.py` | `S`, `C_elec` | `S_0`, `C_elec_0` | [501962, 877260) |
+
+The window heights are computed by each script from the UTC block times
+(`modules/boundaries.py`) and checked against the expected values. Every boundary
+is a UTC instant (2010-07-17, 2018-01-01, 2025-01-01); its boundary block is the
+first block stamped later than it (68,607, 501,961, 877,259), and it is the last
+block of the earlier period. The grids run before 2026-10-05 used [68633, 501995)
+and [501995, 877280), the first blocks stamped at or after U.S. Eastern midnight.
+Each point CSV records the window as `window_start_height` and
+`window_end_height_excl`, and each optimum JSON copies them.
 
 The grid is `S` in {0.01, ..., 0.10} (S = 0 is excluded unless `--include-s0`)
 times `C` in {10, 20, ..., 150}: 150 points. The values come from `np.linspace`
@@ -27,9 +36,30 @@ path, and calls the script's own `objective_function` with the script's own
 `run_grid.py` is the orchestrator. It starts one `run_grid_point.py` process per
 point, at most `--jobs` at a time.
 
+Input files: the grid scripts take the block file (`BLOCK_PACE_DATA`),
+`TX_BLOCK_DATA` and `MACHINE_DATA_FILE` from `config.py`, and read
+`market_price_min.csv`, which they name themselves. The grids `grid_2026-10-01`
+and `grid_2026-10-rerun` read `combined_block_data_latest.csv`, the `config.py`
+default at the time. Since 2026-10-06 the default is `combined_block_data.csv`.
+The two files agree in every column the model uses over blocks 0 to 925,641, and
+a point simulates 888,300 blocks, so a grid now reads the same block data as
+those two grids. To read their file exactly, set
+`PRICE_BLOCK_PACE_DATA=combined_block_data_latest.csv` in the environment of
+`run_grid.py`, which passes its environment on to every point. A process started
+with `systemd-run --user` does not inherit the environment of the shell that
+starts it; it runs with the environment of the user's service manager. Such a
+launch therefore needs the variable passed as
+`systemd-run --user --setenv=PRICE_BLOCK_PACE_DATA=combined_block_data_latest.csv ...`.
+
+`plot_grid_figure3.py` draws Figure 3 from `data/results/grid_2026-10-rerun/` by
+default, the grid whose optimum `config.py` holds. Until 2026-10-06 its default
+was `data/results/grid_2026-10-01/`.
+
 ## The two phases, and why phase 2 uses the phase-1 optimum
 
-The early era (before block 501995) and the modern era are fitted in sequence.
+The early era (S_0 and C_elec_0, used through block 501,961, the boundary block of
+2018-01-01 UTC) and the modern era (S and C_elec, from block 501,962) are fitted
+in sequence.
 Phase 2 simulates from block 0, so its modern-era hashrate depends on the
 early-era parameters `S_0` and `C_elec_0` that were used to get there. The
 modern grid therefore needs a value for them.
@@ -124,7 +154,7 @@ errors, and 0 otherwise. A crash does not stop the other points of the phase.
 Point CSV columns: `grid`, `S_0`/`C_elec_0` (pre2018) or `S`/`C_elec` (modern),
 `RMSLE`, `fixed_S_0`, `fixed_C_elec_0` (modern only), `num_steps`, `elapsed_s`
 (objective only), `setup_s` (data loading in the child), `peak_rss_mb`,
-`git_head`, `git_dirty`.
+`git_head`, `git_dirty`, `window_start_height`, `window_end_height_excl`.
 
 ### Provenance
 
@@ -151,5 +181,5 @@ With neither git nor `PROVENANCE`, both columns are `unknown`.
   so any other state carried between runs there is absent here.
 - `--num-steps` (child) and `--max-points`, `--child-num-steps` (orchestrator)
   exist for testing. A run with fewer than 888,300 steps does not cover the
-  RMSLE window: the pre2018 window needs steps beyond 68,633 and the modern
-  window beyond 501,995; otherwise `objective_function` returns 1e9.
+  RMSLE window: the pre2018 window needs steps beyond 68,608 and the modern
+  window beyond 501,962; otherwise `objective_function` returns 1e9.

@@ -13,8 +13,10 @@ block it does the following:
 1. It computes the miners' expected revenue per unit of energy from the block subsidy,
    the transaction fees, the bitcoin price, the difficulty and the fleet efficiency.
 2. It maps that revenue to an expected block time through a constant-elasticity supply
-   model. The elasticity is `S` (from 2018 on) or `S_0` (before 2018). The electricity
-   cost is `C_ELEC` (from 2018 on) or `C_ELEC_0` (before 2018).
+   model. The elasticity is `S_0` in the early era and `S` in the modern era. The
+   electricity cost is `C_ELEC_0` in the early era and `C_ELEC` in the modern era. The
+   early era runs to block 501,961, the first block stamped after 2018-01-01 00:00 UTC.
+   The modern era starts at block 501,962.
 3. It sets each block time to the expected block time from step 2 (the model is
    deterministic; the random draw in the code is switched off) and updates the difficulty
    every 2,016 blocks, as Bitcoin Core does. The simulated hashrate follows from the difficulty and the block times.
@@ -27,6 +29,11 @@ block it does the following:
 
 Up to the historical cutoff (`historical_cutoff` in `main.py`), the block timestamps
 come from the historical block data. After it, the economic model sets the block times.
+Every period boundary (the cutoff, the era split and the calibration windows) is a UTC
+instant. Its boundary block is the first block whose UTC timestamp
+(`Block_Time_Seconds`) is later than the instant. That block is the last block of the
+earlier period (`modules/boundaries.py`). The genesis block is stamped 1231006505
+(2009-01-03 18:15:05 UTC).
 The historical price and fee data are used up to the last timestamp of the
 transaction-fee file. After that timestamp, the price follows a forecast and the fee of
 each block is 4% of its subsidy. The fleet efficiency follows one of two scenarios, set
@@ -44,7 +51,8 @@ by `EFFICIENCY_SCENARIO` in `config.py`:
 |---|---|
 | `main.py` | Runs one simulation and writes its result CSV. |
 | `config.py` | Model constants, calibrated parameters, input file paths, and the `PRICE_*` environment overrides. |
-| `modules/` | The model: `simulation.py` (block loop), `network.py` (difficulty and hashrate), `economics.py` (revenue to block time), `efficiency_cbeci.py` (CBECI fleet efficiency and the frontier fit), `energy.py`, `energy_cbeci.py`, `price.py` (historical prices and forecasts), `data_processing.py` (input loaders and error metrics), `visualization.py`, `debug.py`. |
+| `modules/` | The model: `simulation.py` (block loop), `boundaries.py` (period boundaries as UTC instants, and the genesis time), `network.py` (difficulty and hashrate), `economics.py` (revenue to block time), `efficiency_cbeci.py` (CBECI fleet efficiency and the frontier fit), `energy.py`, `energy_cbeci.py`, `price.py` (historical prices and forecasts), `data_processing.py` (input loaders and error metrics), `visualization.py`, `debug.py`. |
+| `data/` | The CBECI machine table `cbeci_machines_090325.csv` and its licence notice `LICENSE.md`. The other input files are not published. |
 | `validation/` | The CBECI replication (`cbeci_replication.py`), its figure (`plot_cbeci_replication.py`, Figure 2), three follow-up checks of the remaining differences from CBECI (`cbeci_revenue_check.py`, `cbeci_alignment_check.py`, `cbeci_machine_list_check.py`), and the outputs of the runs reported in the paper (`results/`). |
 | `calibration/` | The driver of the two calibration grids (`run_grid.py`, `run_grid_point.py`) and their figure (`plot_grid_figure3.py`, Figure 3). See `calibration/README.md`. |
 | `notebooks/` | The two calibration grid scripts that `calibration/run_grid_point.py` imports. |
@@ -68,8 +76,10 @@ is not installed.
 
 ## Input data
 
-The input files are not in this repository. The `data/` directory is excluded by
-`.gitignore`.
+The repository holds one input file, the CBECI machine table
+`data/cbeci_machines_090325.csv`, with its licence notice `data/LICENSE.md`. The other
+input files are not in this repository. `.gitignore` excludes every other file in
+`data/`.
 
 ### Where the code looks for them
 
@@ -84,49 +94,63 @@ Two layouts work:
 - **`data/` at the repository root.** Run from a direct subdirectory of the repository,
   for example `cd notebooks && python ../main.py`. The validation and calibration
   scripts use this layout: each one changes into its own directory (`validation/` or
-  `notebooks/`) before it loads data.
+  `notebooks/`) before it loads data. This `data/` directory already holds the
+  machine table. Put the other input files into it, as copies or as symbolic links.
 - **`data/` beside the repository.** Run from the repository root with
   `python main.py`. The inputs are then read from `<parent of the repository>/data/`.
+  That directory also needs a copy of the machine table.
 
 `scenarios/run_scenarios.py` does not use either layout directly. It takes the inputs
 from `--data-dir` and creates a separate working directory for every run (see
 "Scenario runs" below).
 
-`data/` may be a symbolic link. `.gitignore` excludes both a directory and a link of
-that name at the repository root.
+Keep `data/` at the repository root a directory. Git tracks the machine table inside
+it, so if `data/` is replaced by a symbolic link, git reports the two tracked files as
+deleted. Symbolic links to single files inside `data/` work, and `.gitignore` excludes
+them.
 
 ### Files each workflow reads
 
 | Workflow | Files read from `data/` |
 |---|---|
-| `main.py` with no `PRICE_*` variables set | `combined_block_data_latest.csv`, `market_price_min_latest.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv` |
+| `main.py` with no `PRICE_*` variables set | `combined_block_data.csv`, `market_price_min.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv` (the `config.py` defaults) |
 | CBECI replication (`validation/cbeci_replication.py`) | the same four files as `main.py` (the `config.py` defaults) |
-| Calibration grids (`calibration/run_grid.py`) | `combined_block_data_latest.csv`, `market_price_min.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv`. The price file is named in the two grid scripts in `notebooks/`. The other three come from `config.py`. |
+| Calibration grids (`calibration/run_grid.py`) | `combined_block_data.csv`, `market_price_min.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv`. The price file is named in the two grid scripts in `notebooks/`. The other three come from `config.py`. |
 | The ten scenario runs and the reproduction run (`scenarios/runs.json`) | `combined_block_data.csv`, `market_price_min.csv`, `txfee_data.csv`, `cbeci_machines_090325.csv` |
-| Revenue check, `run-model` stage (`validation/cbeci_revenue_check.py`) | It calls `cbeci_replication.main()`, so it reads the `config.py` defaults of the replication, with no `PRICE_*` variables set: `BLOCK_PACE_DATA` = `combined_block_data_latest.csv`, `PRICE_DATA` = `market_price_min_latest.csv`, `TX_BLOCK_DATA` = `txfee_data.csv`, `MACHINE_DATA_FILE` = `cbeci_machines_090325.csv`. |
+| Revenue check, `run-model` stage (`validation/cbeci_revenue_check.py`) | It calls `cbeci_replication.main()`, so it reads the `config.py` defaults of the replication, with no `PRICE_*` variables set: `BLOCK_PACE_DATA` = `combined_block_data.csv`, `PRICE_DATA` = `market_price_min.csv`, `TX_BLOCK_DATA` = `txfee_data.csv`, `MACHINE_DATA_FILE` = `cbeci_machines_090325.csv`. |
 | Revenue check, `download` stage | No file. It requests the Coin Metrics community API. |
 | Revenue check, `analyze` stage | `cbeci_machines_090325.csv`. From `results/cbeci_revenue_check/`: `model_daily_revenue_appends.csv`, `model_per_block.csv.gz`, `coinmetrics_daily.csv`, `coinmetrics_availability.csv` and `model_run/daily_efficiency_J_per_TH.csv`, which are written by the two earlier stages. From `results/cbeci_replication_v3/`: `daily_efficiency_J_per_TH.csv` and `annual_comparison.csv`, which are the output of `validation/cbeci_replication.py` (see "Checks of the remaining differences from CBECI"). It also reads `USE_FRACTION` from `config.py`. |
 | Alignment check (`validation/cbeci_alignment_check.py`) | `cbeci_machines_090325.csv`. From `results/cbeci_revenue_check/`: `model_daily_revenue_appends.csv`, `daily_revenue_comparison.csv`, `coinmetrics_daily.csv` and `daily_psi_by_revenue_source.csv`. `coinmetrics_daily.csv` is written by the `download` stage. `daily_revenue_comparison.csv` and `daily_psi_by_revenue_source.csv` are written by the `analyze` stage. |
 | Machine-list check, `fetch` stage (`validation/cbeci_machine_list_check.py`) | No file. It requests `http://sha256.cbeci.org`, the Google Sheet to which that address redirects, and the Internet Archive's CDX index. |
 | Machine-list check, `analyze` stage | `cbeci_machines_090325.csv`. From `results/cbeci_machine_list_check/raw/`: `fetch_log.json`, `sheet.xlsx` and the `sheet_gid*.csv` export, which the `fetch` stage writes. From `results/cbeci_revenue_check/`: `model_daily_revenue_appends.csv`, `model_per_block.csv.gz`, `coinmetrics_daily.csv`, `daily_psi_by_revenue_source.csv` and `annual_energy_by_revenue_source.csv`. It also reads `USE_FRACTION` from `config.py`. The Internet Archive index files that `fetch` saves are not read. |
 
-The scenario runs override the block and price files of `config.py` with the two older
-files, which are the files the paper's original runs used. `scenarios/README.md`
-("Input files") gives the evidence. The two block files are identical over the blocks
-they share in `Block_Time_Seconds` and `Bits`. The two price files are identical over
-the minutes they share.
+The `config.py` defaults `combined_block_data.csv` and `market_price_min.csv` are the
+files the paper's original runs used. `scenarios/README.md` ("Input files") gives the
+evidence. The ten scenario runs also name these two files in `scenarios/runs.json`.
 
-The older files `combined_block_data.csv` and `market_price_min.csv` and the `_latest`
-files configured in `config.py` agree in every column the model reads over all heights
-and minutes they share. The columns are `Height`, `Block_Time_Seconds` and `Bits` for the
-blocks, and `Price (USD)` for the prices. The CBECI validation runs through 2023, so it
-gives the same result with either pair of files.
+Until 6 October 2026 the defaults were `combined_block_data_latest.csv` and
+`market_price_min_latest.csv`. The calibration grids and the CBECI checks reported in
+the paper ran with those defaults. The grids read `combined_block_data_latest.csv`. The
+CBECI replication and the revenue check read both `_latest` files.
+
+The older files and the `_latest` files agree in every column the model reads, over all
+heights and minutes they share. The columns are `Height`, `Block_Time_Seconds` and
+`Bits` for the blocks, and `Price (USD)` for the prices. The block files share blocks 0
+to 925,641, and a grid point simulates 888,300 blocks. The price files share every
+minute up to 2025-11-27 18:59, and the CBECI checks end in 2023. So the grids and the
+CBECI checks read the same values from either pair of files. To read the reported runs'
+files exactly, set `PRICE_BLOCK_PACE_DATA=combined_block_data_latest.csv` and, for the
+CBECI checks, also `PRICE_PRICE_DATA=market_price_min_latest.csv`. `calibration/run_grid.py`
+passes its environment on to every grid point. A process started with
+`systemd-run --user` does not inherit the environment of the shell that starts it, so
+such a launch needs the variable passed as
+`systemd-run --user --setenv=PRICE_BLOCK_PACE_DATA=combined_block_data_latest.csv ...`.
 
 ### Size, coverage and origin of each file
 
 | File | Bytes | Last row | Origin |
 |---|---|---|---|
-| `cbeci_machines_090325.csv` | 11,170 | 166 machines | The machine table published on the CBECI website (Cambridge Centre for Alternative Finance, https://ccaf.io/cbnsi/cbeci), as stated in the paper's Data Sources section. It was downloaded from CBECI's website on 9 March 2025. The `090325` in the file name is that date, written as day, month and year. |
+| `cbeci_machines_090325.csv` | 11,170 | 166 machines | In this repository, in `data/`. The machine table published on the CBECI website (Cambridge Centre for Alternative Finance, https://ccaf.io/cbnsi/cbeci), as stated in the paper's Data Sources section. It was downloaded from CBECI's website on 9 March 2025. The `090325` in the file name is that date, written as day, month and year. |
 | `txfee_data.csv` | 87,084,626 | block 922,755, 2025-11-08 17:58:32 UTC | Per-block fee statistics (`Height`, `timestamp` in milliseconds, `total_fees` and others). The paper states that block-level data, including transaction fees, were collected with Bitcoin Core through custom Python scripts. The script that wrote this file is not in this repository. The last fee timestamp sets the start of the forecast. |
 | `combined_block_data.csv` | 176,547,088 | block 925,641, 2025-11-29 00:32:16 | Per-block height, hash, timestamp, inter-block interval, `Bits` and target. Collected with Bitcoin Core (RPC) and the mempool.space REST API by scripts that are not in this repository. |
 | `combined_block_data_latest.csv` | 180,410,516 | block 936,248, 2026-02-12 17:19:49 | The same source and columns, extended to a later block, with two extra columns. |
@@ -152,6 +176,17 @@ Two workflows also read outputs of earlier runs:
 
 These outputs are not in this repository either.
 
+### Not in this repository
+
+- the input files other than the machine table (their sizes, coverage and SHA-256 are
+  listed above);
+- the scripts that collected the block, fee and price data;
+- the outputs of the paper's runs: the calibration grid results, the ten run CSVs and
+  the original runs' CSVs;
+- the git tag `paper3-april-2026` of the authors' working repository, which the
+  reproduction check reads;
+- the notebook `data/results/scenario_results.ipynb`, which drew the original figures.
+
 ## Running `main.py`
 
 With the inputs in place (see "Where the code looks for them"):
@@ -159,13 +194,12 @@ With the inputs in place (see "Where the code looks for them"):
     mkdir -p data/logs
     cd notebooks && python ../main.py
 
-With no `PRICE_*` environment variables set, `main.py` simulates 921,683 blocks with
-the historical cutoff at 2025-01-01 00:00:00. These are the settings of
-the out-of-sample test (the `testing` run in `scenarios/runs.json`). The run differs
-from the `testing` run in two ways. First, it reads the `_latest` block and price files
-named in `config.py`. Second, it writes its output to
-`../data/simulation_results_hindcasting.csv`, because that is the file name set in
-`main.py`.
+With no `PRICE_*` environment variables set, `main.py` runs the out-of-sample test.
+It simulates 921,683 blocks with the historical cutoff at 2025-01-01 00:00:00 UTC, and
+it reads the `config.py` input files. These are the settings and the input files of the
+`testing` run in `scenarios/runs.json`. The output is
+`../data/simulation_results_testing.csv`. The `testing` run of the scenario driver names
+its output `simulation_results_testing_2026-10` instead.
 
 `main.py` writes three files:
 
@@ -339,8 +373,8 @@ Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International licence
 The parameters `S_0`, `C_ELEC_0`, `S` and `C_ELEC` in `config.py` are the minima of two
 grid searches of the RMSLE between simulated and historical hashrate:
 
-- the pre-2018 grid varies `S_0` and `C_elec_0` over blocks 68,633 to 501,994;
-- the 2018-2024 grid varies `S` and `C_elec` over blocks 501,995 to 877,279, with `S_0`
+- the pre-2018 grid varies `S_0` and `C_elec_0` over blocks 68,608 to 501,961;
+- the 2018-2024 grid varies `S` and `C_elec` over blocks 501,962 to 877,259, with `S_0`
   and `C_elec_0` fixed at the optimum of the first grid.
 
 The grid scripts are `notebooks/sensitivity_analysis_pre2018_blocks.py` and
@@ -356,7 +390,11 @@ fixed at the optimum of the pre-2018 grid:
 
 Each point simulates 888,300 blocks and needs about 2.2 GB of memory.
 `calibration/README.md` describes the phases, the outputs, resuming, and the exit
-status.
+status. The optimum of each phase is written to `<out-dir>/phase1_optimum.json`
+(`S_0`, `C_elec_0`) and `<out-dir>/phase2_optimum.json` (`S`, `C_elec`). The values in
+`config.py` (`S_0 = 0.09`, `C_ELEC_0 = 100`, `S = 0.02`, `C_ELEC = 40`) are the optimum
+of the authors' grid run, and the paper's ten runs used them. To run the ten runs with
+the optimum of a new grid, first write its four values into `config.py`.
 
 `calibration/plot_grid_figure3.py` draws Figure 3 from the two merged grid CSVs:
 
@@ -368,19 +406,22 @@ status.
 
 `scenarios/runs.json` defines the ten runs of the paper:
 
-- `testing`: the out-of-sample test, 921,683 blocks, economic model from 2025-01-01;
-- `hindcasting`: the hindcast of Figure 4, 877,280 blocks, economic model from
-  2010-07-17;
+- `testing`: the out-of-sample test, 921,683 blocks (to the boundary block of
+  2025-11-01 UTC), economic model from 2025-01-01;
+- `hindcasting`: the hindcast of Figure 4, 877,259 blocks (to the boundary block of
+  2025-01-01 UTC), economic model from 2010-07-17;
 - eight forecast scenarios, 1,260,000 blocks each (to about 2032), from 2025-11-08
   17:58:32. They combine two efficiency scenarios (`frozen`, `frontier`) with four price
   paths (`fixed` at the last historical price, and power laws reaching $200,000,
   $500,000 and $1,000,000 on 2032-01-01).
 
 All ten read the original input files `combined_block_data.csv` and
-`market_price_min.csv`. Run them with:
+`market_price_min.csv`, which are also the `config.py` defaults. Run them with:
 
     python scenarios/run_scenarios.py --out-dir <new directory> --data-dir <directory with the four inputs> \
         --jobs 2 --python "$(which python)"
+
+Without `--data-dir`, the driver reads the inputs from the repository's `data/`.
 
 The driver starts one `scenarios/run_one.py` process per run. Each run gets its own
 directory `<out-dir>/runs/<name>/`. Its working directory is `work/`, and `data/` beside
@@ -446,15 +487,20 @@ repository:
   command that creates it is given in "Checks of the remaining differences from CBECI".
 - `validation/plot_cbeci_replication.py` defaults to `--in-dir
   data/results/cbeci_replication_v3`, and `calibration/plot_grid_figure3.py` defaults
-  to `data/results/grid_2026-10-01/`. Both are names of the authors' runs.
+  to `data/results/grid_2026-10-rerun/`. Both are names of the authors' runs.
+  `grid_2026-10-rerun` is the grid whose optimum `config.py` holds.
 - `scenarios/analyze_results.py --set new` defaults to
-  `data/results/scenarios_2026-10/runs`. Pass `--runs-dir`. It also looks for two grid
+  `data/results/scenarios_2026-10-rerun/runs`, the authors' runs behind the paper's
+  numbers. Pass `--runs-dir`. It also looks for two grid
   files in `data/results/` to check the calibration RMSLE. If they are missing, it
   prints a warning and skips that check.
 - The docstrings refer to `data/results/scenario_results.ipynb`, the notebook that
   produced the original figures. That notebook is not published.
 - `config.py` records the calibration grid run by its directory and a commit of the
-  working repository (`09730b6`). That commit is not in this repository.
+  working repository (`ba17352`). That commit is not in this repository.
+- `scenarios/analyze_results.py` checks the hindcast RMSLE against
+  `data/results/grid_2026-10-rerun/phase2_optimum.json` unless `--grid-optimum` names
+  another file. That directory is the authors' grid whose optimum `config.py` holds.
 - `scenarios/README.md` and `calibration/README.md` describe the runs on the authors'
   machines (host names, paths and measured memory and time). The commands apply here
   with the paths changed.
@@ -478,10 +524,23 @@ these:
   moving-average entry for a day.
 - `run_simulation` resets the per-run efficiency state, so that several runs in one
   process are independent.
-- `config.py` holds the parameters of the re-run calibration grid: `S_0 = 0.09`,
-  `C_ELEC_0 = 110`, `S = 0.02`, `C_ELEC = 40`. `EFFICIENCY_SCENARIO` is `"frontier"`.
+- The simulated clock keeps the fractional part of every block time
+  (`sim_clock_s` in `modules/simulation.py`). The April code dropped it at every block.
+- Every period boundary is a UTC instant, and its block height comes from the UTC block
+  times (`modules/boundaries.py`). The era switch happens at block 501,962 in every run.
+  The April code switched era when the simulated clock passed 2018-01-01, and found
+  several heights from U.S. Eastern midnight.
+- The genesis block is stamped 1231006505 (2009-01-03 18:15:05 UTC). The April code used
+  1230988505, the U.S. Eastern clock reading taken as UTC.
+- `config.py` holds the optimum of the calibration grid re-run after these changes:
+  `S_0 = 0.09`, `C_ELEC_0 = 100`, `S = 0.02`, `C_ELEC = 40`. `EFFICIENCY_SCENARIO` is
+  `"frontier"`.
+- The `config.py` input files are `combined_block_data.csv` and `market_price_min.csv`,
+  the files of the paper's runs. `main.py` names its default output
+  `simulation_results_testing`.
 - `config.py` and `main.py` read the `PRICE_*` environment overrides.
-- The validation, calibration and scenario scripts and `REQUIREMENTS.txt` were added.
+- The validation, calibration and scenario scripts, `REQUIREMENTS.txt` and the machine
+  table `data/cbeci_machines_090325.csv` were added.
 
 ## License
 
@@ -500,3 +559,7 @@ Cambridge Bitcoin Electricity Consumption Index, Cambridge Centre for Alternativ
 https://docs.coinmetrics.io/api/v4/). The values in these files were computed by the
 author from that material and are not published by either source. The PolyForm
 Noncommercial License covers the code only.
+
+The machine table `data/cbeci_machines_090325.csv` is licensed under CC BY-NC-SA 4.0,
+because it is adapted from CBECI's hardware list. `data/LICENSE.md` gives the
+source and the changes.

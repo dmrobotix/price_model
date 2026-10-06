@@ -33,13 +33,22 @@ INITIAL_DIFFICULTY = 1.0           # Normalized difficulty (can be derived from 
 #INITIAL_HASHRATE = (INITIAL_DIFFICULTY * 2**32) / 600.0  # implied hashrate for 600 s blocks
 INITIAL_HASHRATE = 1.0
 INITIAL_BLOCK_HEIGHT = 0           # Initial block height
-# BLOCK_PACE_DATA = '../data/combined_block_data.csv'
-# TX_BLOCK_DATA = '../data/txfee_data.csv'
-# PRICE_DATA = '../data/market_price_min.csv'
-# SANGHA DATA
-BLOCK_PACE_DATA = '../data/combined_block_data_latest.csv'
+# Input files. The defaults are the files the paper's runs read (scenarios/runs.json):
+# the out-of-sample test, the hindcast and the eight scenarios. Until 2026-10-06 the
+# defaults were combined_block_data_latest.csv and market_price_min_latest.csv.
+# The calibration grids (calibration/run_grid.py, grid_2026-10-01 and grid_2026-10-rerun)
+# read combined_block_data_latest.csv, the default at the time. It agrees with
+# combined_block_data.csv in every column the model uses (Height, Block_Time_Seconds and
+# Bits, and the fees joined from TX_BLOCK_DATA) over blocks 0-925,641, the last block of
+# combined_block_data.csv. The grids simulate 888,300 blocks, so they read the same block
+# data from either file. PRICE_BLOCK_PACE_DATA=combined_block_data_latest.csv reproduces
+# the grids' input file exactly.
+# The CBECI checks in validation/ also ran with the old defaults. The two price files
+# agree in every row up to 2025-11-27 18:59, the last row of market_price_min.csv, and
+# those checks end in 2023.
+BLOCK_PACE_DATA = '../data/combined_block_data.csv'
 TX_BLOCK_DATA = '../data/txfee_data.csv'
-PRICE_DATA = '../data/market_price_min_latest.csv'
+PRICE_DATA = '../data/market_price_min.csv'
 
 # -------------------------------
 # Economic Parameters
@@ -52,11 +61,14 @@ USE_FRACTION = False
 LOWER_BLOCK_MULTIPLIER = 0.5       # Clamping values for block time multipliers
 UPPER_BLOCK_MULTIPLIER = 1.5       # Clamping values for block time multipliers
 DEFAULT_MULTIPLIER = 1.64          # When BTC price is zero
-# Calibration: grid run data/results/grid_2026-10-01 (commit 09730b6); RMSLE 0.7649 (pre-2018 era) and 0.2475 (modern era)
+# Calibration: grid run data/results/grid_2026-10-rerun (commit ba17352); RMSLE 0.7646 (pre-2018 era) and 0.2515 (modern era)
 C_ELEC = 40                        # Electricity cost in $/MWh for modern era
 S = 0.02
+# Era split, a UTC instant. The simulation switches era by block height: blocks up to the
+# boundary block of T_STAR (501,961, the first block stamped after 2018-01-01 00:00 UTC) use
+# S_0 and C_ELEC_0; later blocks use S and C_ELEC (modules/boundaries.py).
 T_STAR = pd.Timestamp("2018-01-01") 
-C_ELEC_0 = 110
+C_ELEC_0 = 100
 S_0 = 0.09
 # Previous calibration (month-first release dates, unfiltered machine table): S = 0.02, C = 50 modern era; S = 0.07, C = 100 hobby era
 # S = 0.026238, C=50
