@@ -81,6 +81,10 @@ The repository holds one input file, the CBECI machine table
 input files are not in this repository. `.gitignore` excludes every other file in
 `data/`.
 
+The other input files are too large for GitHub. They are available from the authors
+on request. Write to mpz [at] gatech [dot] edu, replacing " [at] " with "@" and
+" [dot] " with ".".
+
 ### Where the code looks for them
 
 Every input and output path in `config.py`, `main.py` and `modules/debug.py` starts
@@ -179,7 +183,7 @@ These outputs are not in this repository either.
 ### Not in this repository
 
 - the input files other than the machine table (their sizes, coverage and SHA-256 are
-  listed above);
+  listed above; they are available on request, see "Input data");
 - the scripts that collected the block, fee and price data;
 - the outputs of the paper's runs: the calibration grid results, the ten run CSVs and
   the original runs' CSVs;

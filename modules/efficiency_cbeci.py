@@ -37,7 +37,7 @@ Core ideas from the PDF
 5) Select the profitable set S_d(P) = { machines i : η_i <= Θ_d(P) }.
    If S_d(P) is empty for day d, use the most recent *non-empty* set from a prior day.
 6) Weighted average efficiency ψ_d = Σ_i (η_i * w_i,d) where w_i,d are normalized weights.
-7) For timestamps > historical cutoff (forecast), include an *exponential model* machine
+7) For timestamps > historical cutoff (forecast), include a *power-law frontier* machine
    that represents the most recent release efficiency. Always give this model-entry weight=1.
 
 The function exported here matches the existing simulation signature
@@ -100,9 +100,9 @@ _daily_revenue_ma: deque = deque(maxlen=REVENUE_MA_DAYS)
 _daily_threshold_ma: deque = deque(maxlen=REVENUE_MA_DAYS)
 _last_rev_day: date | None = None
 
-# Exponential efficiency model cache
+# Power-law frontier efficiency model cache
 _model_fitted: bool = False
-_model_params: tuple[float, float] | None = None    # (A, b) for η_TH(t) = A * exp(b * t_years)
+_model_params: tuple[float, float, float, float] | None = None  # (eta_floor, A, p, t_shift): η_TH(t) = eta_floor + A * (t_years + t_shift)^(-p)
 _model_t0: pd.Timestamp | None = None               # earliest release
 _model_forecast_cache: dict[int, float] = {}        # day_index -> eta_TH
 
@@ -338,10 +338,6 @@ def _load_machines(csv_path: str) -> pd.DataFrame:
 #     return eta_TH
 
 # --------------------------------
-# Exponential model for newest tech
-# --------------------------------
-
-# --------------------------------
 # Power-law model for newest tech
 # --------------------------------
 
@@ -375,16 +371,17 @@ def _powerlaw_eff_model(
 
 
 def _log_powerlaw_eff_model(t_years, eta_floor, A, p, t_shift):
-    """log of _powerlaw_eff_model; the fit target is log(eta) (see _fit_exponential_model)."""
+    """log of _powerlaw_eff_model; the fit target is log(eta) (see _fit_frontier_powerlaw)."""
     return np.log(_powerlaw_eff_model(t_years, eta_floor, A, p, t_shift))
 
 
-def _fit_exponential_model(df: pd.DataFrame):
+def _fit_frontier_powerlaw(df: pd.DataFrame):
     """
     Fit a *power-law* frontier efficiency curve η_TH(t) (J/TH) across historical
     machine release dates.
 
-    NOTE: We keep the function name for backwards compatibility.
+    (Until 2026-10 this function was named _fit_exponential_model, although the
+    curve it fits is the power law below.)
 
     Key change vs naive fit:
       - Fit ONLY to the observed frontier (lower envelope) of machine efficiencies.
@@ -517,7 +514,7 @@ def _model_eta_TH_on_date(dt: datetime) -> float:
     """
     global _model_params, _model_t0, _model_forecast_cache, _model_fitted
     if (not _model_fitted) or (_model_params is None) or (_model_t0 is None):
-        raise RuntimeError("Frontier model not fitted yet. Call _fit_exponential_model first.")
+        raise RuntimeError("Frontier model not fitted yet. Call _fit_frontier_powerlaw first.")
 
     idx = _day_index(dt)
     if idx in _model_forecast_cache:
@@ -599,7 +596,7 @@ def _ensure_initialized(file_path: str):
         _env.csv_path = file_path
         mdf = _load_machines(file_path)
         _machine_df = mdf
-        _fit_exponential_model(mdf)  # now logistic under the hood
+        _fit_frontier_powerlaw(mdf)
         _env.initialized = True
 
 
@@ -617,7 +614,8 @@ def compute_dynamic_efficiency(
     total_operating: bool,
     *,
     historical_cutoff: datetime | None = None,
-    modern_era: bool | None = None
+    modern_era: bool | None = None,
+    daily_block_subsidies: np.ndarray | None = None
 ) -> float:
     """
     CBECI-style dynamic efficiency (J / hash) for the simulation timestamp.
@@ -627,6 +625,12 @@ def compute_dynamic_efficiency(
     ...
     TX_FEE_btc : float
         Daily aggregate transaction fees for a given block.
+    daily_block_subsidies : np.ndarray | None
+        Protocol subsidy (BTC) of each block in daily_difficulties, aligned 1:1 with
+        daily_difficulties and daily_block_times. The day's subsidy revenue is the sum
+        of the blocks' own subsidies, so a day that contains a halving is priced at
+        both subsidies. If None, every block of the day is priced at R_block (the
+        behaviour before 2026-10, which misprices halving days).
     ...
     """
     global _prev_nonempty_set_mask
@@ -660,12 +664,30 @@ def compute_dynamic_efficiency(
             # 3. Calculate total reward in $
             # TX_FEE_btc = R_block * TX_FEE_PCT
             # total_reward_btc = R_block + TX_FEE_btc
-            total_reward_btc = R_block    
-            total_reward_usd = total_reward_btc * P_BTC
-
             # Get the *actual* number of blocks from your input array
             num_blocks_day_d = len(daily_difficulties)
-            total_daily_reward_usd = total_reward_usd * num_blocks_day_d + TX_FEE_btc*P_BTC # Here we passed the aggregate transaction fees for the 
+
+            if daily_block_subsidies is None:
+                # Old behaviour: every block of the day at the subsidy R_block.
+                total_reward_btc = R_block
+                total_reward_usd = total_reward_btc * P_BTC
+                subsidy_usd_day = total_reward_usd * num_blocks_day_d
+            else:
+                # Each block at its own subsidy. Blocks are grouped by subsidy value so
+                # that a day with a single subsidy is computed exactly as above,
+                # (R * P) * n, with no change in floating-point rounding; a day that
+                # contains a halving has two groups.
+                subs = np.asarray(daily_block_subsidies, dtype=float)
+                if subs.shape != (num_blocks_day_d,):
+                    raise ValueError(
+                        f"daily_block_subsidies has shape {subs.shape}, but the day has "
+                        f"{num_blocks_day_d} blocks")
+                values, counts = np.unique(subs, return_counts=True)
+                subsidy_usd_day = 0.0
+                for sub_btc, n_blocks in zip(values, counts):
+                    subsidy_usd_day += (float(sub_btc) * P_BTC) * int(n_blocks)
+
+            total_daily_reward_usd = subsidy_usd_day + TX_FEE_btc*P_BTC # Here we passed the aggregate transaction fees for the 
             #total_daily_reward_usd = total_reward_usd * 144 + TX_FEE_btc*P_BTC #
         
             # 4. Calculate total TH produced in the day
@@ -753,12 +775,12 @@ def compute_dynamic_efficiency(
     else:
         _prev_nonempty_set_mask = mask_profitable.copy()
 
-    # ---- 6) Forecast: include exponential-model machine with weight=1 -------
+    # ---- 6) Forecast: include power-law frontier machine with weight=1 -------
     weights = np.zeros(len(df), dtype=float)
     for i in np.where(mask_profitable)[0]:
         weights[i] = _age_weight(M_months[i])
 
-    # ---- 7) Scenario: frozen vs frontier logistic --------------------------
+    # ---- 7) Scenario: frozen vs frontier power law --------------------------
     # By default (frozen tech), we only use the historical machine table.
     include_model = False
 

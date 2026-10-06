@@ -26,6 +26,23 @@ def _advance_clock(state: dict) -> None:
     state['sim_timestamp'] = pd.to_datetime(state['sim_timestamp_s'], unit="s", utc=True).tz_convert(None)
 
 
+def _block_subsidy(block_height: int, params: dict) -> float:
+    """Protocol subsidy (BTC) of the block at block_height: the halving rule of simulate_step."""
+    return params['initial_block_subsidy'] / (2 ** (block_height // params['halving_interval']))
+
+
+def _history_subsidy(entry: dict, params: dict) -> float:
+    """Subsidy of the block that a history entry records.
+
+    history[i] is the state after block i was mined (run_simulation sets
+    'block_height' on every entry it creates). The initial state, history[0], may
+    carry no 'block_height'; then the subsidy it was constructed with is used.
+    """
+    if 'block_height' in entry:
+        return _block_subsidy(int(entry['block_height']), params)
+    return float(entry['R_block'])
+
+
 def simulate_step(state: dict, params: dict, block_height: int, history: list) -> dict:
     """
     Perform one simulation step by updating the simulation state.
@@ -40,8 +57,7 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
 
     try:
         # --- Halving rule ---
-        halvings = block_height // params['halving_interval']
-        state['R_block'] = params['initial_block_subsidy'] / (2**halvings)
+        state['R_block'] = _block_subsidy(block_height, params)
 
         # --- Time State Setup ---
         # 'now_s' is the timestamp (seconds) BEFORE the current block is mined.
@@ -140,21 +156,30 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                     daily_difficulties = np.array([state['D']])
                     daily_block_times = np.array([state.get('T_block', EXPECTED_BLOCK_TIME)])
                     daily_tx_fees = np.array([state.get('TX_fee', 0.0)])
+                    daily_subsidies = np.array([state['R_block']])
                 else:
                     daily_difficulties = np.array([h['D'] for h in same_day_history])
                     daily_block_times = np.array([h.get('T_block', EXPECTED_BLOCK_TIME) for h in same_day_history])
                     daily_tx_fees = np.array([h.get('TX_fee', 0.0) for h in same_day_history])
+                    # Each block's own subsidy, aligned 1:1 with daily_difficulties, so that
+                    # a day containing a halving is priced at both subsidies. These are the
+                    # history entries stamped day_to_aggregate (the day being closed; the block
+                    # that opens current_day is history[-1]), i.e. exactly the blocks whose
+                    # difficulty and fees are aggregated here.
+                    daily_subsidies = np.array([_history_subsidy(h, params) for h in same_day_history])
                 
                 aggregate_daily_fees = float(np.sum(daily_tx_fees))
                 
                 params['daily_difficulties_cached'] = daily_difficulties
                 params['daily_block_times_cached'] = daily_block_times
+                params['daily_block_subsidies_cached'] = daily_subsidies
                 params['aggregate_daily_fees_cached'] = aggregate_daily_fees
                 params['daily_window_start_idx'] = end_idx 
                 params['daily_window_day'] = current_day 
             
             daily_difficulties = params.get('daily_difficulties_cached', np.array([state['D']]))
             daily_block_times = params.get('daily_block_times_cached', np.array([state.get('T_block', EXPECTED_BLOCK_TIME)]))
+            daily_subsidies = params.get('daily_block_subsidies_cached', np.array([state['R_block']]))
             aggregate_daily_fees = params.get('aggregate_daily_fees_cached', 0.0)
             state['aggregate_daily_fees'] = aggregate_daily_fees
             
@@ -203,6 +228,7 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                         TX_FEE_btc=state['aggregate_daily_fees'],
                         daily_difficulties=daily_difficulties,
                         daily_block_times=daily_block_times,
+                        daily_block_subsidies=daily_subsidies,
                         total_operating=params['total_operating'],
                         historical_cutoff=params['last_hist_time'],
                         modern_era=modern_era
@@ -245,6 +271,7 @@ def simulate_step(state: dict, params: dict, block_height: int, history: list) -
                     TX_FEE_btc=state['aggregate_daily_fees'],
                     daily_difficulties=daily_difficulties,
                     daily_block_times=daily_block_times,
+                    daily_block_subsidies=daily_subsidies,
                     total_operating=params['total_operating'],
                     historical_cutoff=params['last_hist_time'],
                     modern_era=modern_era

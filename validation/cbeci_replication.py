@@ -13,7 +13,7 @@ Assumptions that differ from the model's calibrated run
 * Electricity price: CBECI Assumption 1 uses $50/MWh for ALL years. This script
   sets both params['C_elec'] and params['C_elec_0'] to 50, so the profitability
   threshold uses $50/MWh before and after T_STAR (2018-01-01). The model's
-  calibrated run uses $110/MWh before 2018 (config.C_ELEC_0) and $40/MWh after
+  calibrated run uses $100/MWh before 2018 (config.C_ELEC_0) and $40/MWh after
   (config.C_ELEC).
 * Hardware set: the CBECI manufacturer filter (Bitmain, MicroBT, Canaan for
   hardware released on or after July 2014) is applied by the loader,

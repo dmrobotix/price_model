@@ -11,12 +11,14 @@ enters the profitability threshold.
 The model (modules/efficiency_cbeci.compute_dynamic_efficiency, fed by
 modules/simulation.simulate_step) computes, once per UTC calendar day d,
 
-    R_d = (n_blocks x subsidy x P_BTC + fees_BTC x P_BTC) / (H_d x 86,400)   [$/TH]
+    R_d = (sum of the day's block subsidies x P_BTC + fees_BTC x P_BTC) / (H_d x 86,400)   [$/TH]
     theta_d = R_d / P_elec                                                   [J/TH]
 
-where P_BTC is the minute price at the first block stamped on the next day, the
-subsidy is the one at the height of the block after it (the first block of the next
-day plus one; this matters only on halving days), fees_BTC are the day's block fees, and
+where P_BTC is the minute price at the first block stamped on the next day, each
+block is credited with its own protocol subsidy (since 2026-10-06; before that every
+block of the day was priced at the subsidy of the block after the first block of the
+next day, which was wrong on a day containing a halving, and on the day before a
+halving when the halving block is the first block after the next day's opening block), fees_BTC are the day's block fees, and
 H_d is the Core-style hashrate over the day's blocks (sum of work / sum of block
 intervals). theta_d is appended to a 14-entry moving average at the first block of
 the next day. CBECI (https://ccaf.io/cbnsi/cbeci/methodology, Eqs. 1-3) uses daily
@@ -100,12 +102,17 @@ def run_model():
             dd = np.asarray(kw["daily_difficulties"], dtype=float)
             bt = np.asarray(kw["daily_block_times"], dtype=float)
             H = float(calc_core_hashrate(dd, bt, window=None)[0])
+            subs = kw.get("daily_block_subsidies")
+            # Subsidy revenue basis of the append: the sum of the blocks' own subsidies
+            # (the model's computation), or R_block x n for a model without the argument.
+            subsidy_btc = float(np.sum(subs)) if subs is not None else float(kw["R_block"]) * len(dd)
             daily_rows.append({
                 "revenue_day": prev_day,                # day whose blocks were aggregated
                 "append_day": ec._last_rev_day,         # day on which the entry was appended
                 "target_date": pd.Timestamp(kw["target_date"]),
                 "num_blocks": len(dd),
-                "R_block": float(kw["R_block"]),
+                "R_block": float(kw["R_block"]),        # subsidy of the firing block (informational)
+                "subsidy_btc": subsidy_btc,             # sum of the day's block subsidies
                 "P_BTC": float(kw["P_BTC"]),
                 "fees_btc": float(kw["TX_FEE_btc"]),
                 "sum_difficulty": float(np.nansum(dd)),
@@ -374,7 +381,10 @@ def analyze():
 
     # Recorded R_d and theta follow the model formula.
     H_TH = daily["H_d_Hs"] / 1e12
-    R_formula = (daily["R_block"] * daily["P_BTC"] * daily["num_blocks"]
+    if "subsidy_btc" not in daily.columns:
+        # Output of a run made before 2026-10-06: every block was priced at R_block.
+        daily["subsidy_btc"] = daily["R_block"] * daily["num_blocks"]
+    R_formula = (daily["subsidy_btc"] * daily["P_BTC"]
                  + daily["fees_btc"] * daily["P_BTC"]) / (H_TH * 86400.0)
     ok = H_TH > 0
     check("recorded revenue_per_TH vs formula, max rel diff",
@@ -396,7 +406,7 @@ def analyze():
     d = d.set_index("date_utc")
     comp = pd.DataFrame(index=d.index)
     comp["n_blocks_ours"] = d["num_blocks"]
-    comp["subsidy_btc_ours"] = d["num_blocks"] * d["R_block"]
+    comp["subsidy_btc_ours"] = d["subsidy_btc"]
     comp["fees_btc_ours"] = d["fees_btc"]
     comp["price_ours"] = d["P_BTC"]
     comp["subsidy_usd_ours"] = comp["subsidy_btc_ours"] * d["P_BTC"]
