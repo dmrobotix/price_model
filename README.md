@@ -361,7 +361,7 @@ output of one run of five steps. The steps were `cbeci_replication.py`, the `run
 and `analyze` stages of `cbeci_revenue_check.py`, `cbeci_alignment_check.py`, and the
 `analyze` stage of `cbeci_machine_list_check.py`. The run started on 2026-10-06 at
 23:57 UTC. It used commit `b6ba3f0` of the authors' working repository. That commit's
-model and validation code is identical to commit `587be66` of this repository. The run
+model and validation code is identical to commit `34a7c62` of this repository. The run
 read the Coin Metrics data and the CBECI sheet downloaded on 2026-10-04, and the
 `_latest` block and price files (see "Input data"). The three files at the top of
 `validation/results/` come from the replication. `revenue_check/` and `alignment/` come
