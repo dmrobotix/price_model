@@ -356,6 +356,18 @@ downloads and the per-block model output are not published. The scripts download
 compute them again. The Coin Metrics data and the CBECI sheet can change between
 downloads, so a new run can give different values from the ones reported here.
 
+Every file in `validation/results/` except `LICENSE.md` is an unchanged copy of an
+output of one run of five steps. The steps were `cbeci_replication.py`, the `run-model`
+and `analyze` stages of `cbeci_revenue_check.py`, `cbeci_alignment_check.py`, and the
+`analyze` stage of `cbeci_machine_list_check.py`. The run started on 2026-10-06 at
+23:57 UTC. It used commit `b6ba3f0` of the authors' working repository. That commit's
+model and validation code is identical to commit `587be66` of this repository. The run
+read the Coin Metrics data and the CBECI sheet downloaded on 2026-10-04, and the
+`_latest` block and price files (see "Input data"). The three files at the top of
+`validation/results/` come from the replication. `revenue_check/` and `alignment/` come
+from the revenue check and the alignment check. `machine_list_check/` comes from the
+machine-list check.
+
 The Coin Metrics community data are available under the Creative Commons Attribution-NonCommercial
 4.0 International licence (CC BY-NC 4.0), as stated at https://docs.coinmetrics.io/api/v4/.
 The summary files in `validation/results/revenue_check/`, `validation/results/alignment/`

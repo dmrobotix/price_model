@@ -4,7 +4,7 @@ CBECI revenue check: do the daily revenue inputs explain the remaining CBECI gap
 Question
 --------
 The CBECI replication (validation/cbeci_replication.py) reproduces CBECI's annual
-electricity estimates to a WAPE of 1.25 % (2011-2023, one-day hashrate). This script
+electricity estimates to a WAPE of 1.26 % (2011-2023, one-day hashrate). This script
 tests whether the remaining per-year differences come from the daily revenue that
 enters the profitability threshold.
 
